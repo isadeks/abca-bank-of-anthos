@@ -38,7 +38,7 @@ A change to tests or docs only gets no preview, and merging it leaves production
 - Each service is a directory under `src/` with a `Dockerfile` (or a Jib `pom.xml`). Its Kubernetes manifest lives in `kubernetes-manifests/<name>.yaml`, listed in `kubernetes-manifests/kustomization.yaml`.
 - **A new service** uses `image: abca-boa/<name>` in its manifest; CI creates the image repository and fills in the registry and tag.
 - Service-to-service addresses come from the `service-api-config` ConfigMap (`kubernetes-manifests/config.yaml`).
-- Telemetry: the GCP exporters are switched off on EKS (`deploy/eks/telemetry-off.yaml`). New telemetry uses OpenTelemetry with OTLP, not a vendor-specific exporter.
+- Telemetry: all services export over OpenTelemetry (OTLP) and telemetry is enabled on EKS; the GCP exporters (Cloud Trace, Stackdriver) are gone. New telemetry uses OpenTelemetry with OTLP, not a vendor-specific exporter.
   - Every environment (production `boa` and each `pr-<N>`) has an OpenTelemetry collector at `otel-collector.observability.svc.cluster.local`: OTLP gRPC on `:4317`, HTTP on `:4318`. It sends traces to AWS X-Ray and metrics to CloudWatch (namespace `BankOfAnthos`).
   - Configure services with the standard variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`) in the manifests, and include `k8s.namespace.name` (from the downward API) so a preview's traces can be told apart from production's.
   - Use W3C trace context (`traceparent`) between services.
