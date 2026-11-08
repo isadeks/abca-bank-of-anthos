@@ -1,0 +1,11 @@
+# Internet-facing NLB, reachable only from the allow-listed CIDRs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  loadBalancerClass: eks.amazonaws.com/nlb
+  loadBalancerSourceRanges:
+    - 127.0.0.1/32  # replaced by apply.sh from BOA_ALLOW_CIDRS

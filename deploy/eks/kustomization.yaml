@@ -1,0 +1,53 @@
+# Bank of Anthos on Amazon EKS (Auto Mode). See README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: boa
+resources:
+  - namespace.yaml
+  - ../../kubernetes-manifests
+patches:
+  - path: telemetry-off.yaml
+  - path: frontend-lb.yaml
+  - target: {kind: ServiceAccount, name: bank-of-anthos}
+    patch: |-
+      - op: remove
+        path: /metadata/annotations
+  # The images are linux/amd64 only; Auto Mode may also launch Graviton nodes.
+  - target: {kind: Deployment}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value: {kubernetes.io/arch: amd64}
+  - target: {kind: StatefulSet}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value: {kubernetes.io/arch: amd64}
+images:
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/frontend
+    newName: REGISTRY/abca-boa/frontend
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/userservice
+    newName: REGISTRY/abca-boa/userservice
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/contacts
+    newName: REGISTRY/abca-boa/contacts
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/ledgerwriter
+    newName: REGISTRY/abca-boa/ledgerwriter
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/balancereader
+    newName: REGISTRY/abca-boa/balancereader
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/transactionhistory
+    newName: REGISTRY/abca-boa/transactionhistory
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/accounts-db
+    newName: REGISTRY/abca-boa/accounts-db
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/ledger-db
+    newName: REGISTRY/abca-boa/ledger-db
+    newTag: v0.6.11
+  - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/loadgenerator
+    newName: REGISTRY/abca-boa/loadgenerator
+    newTag: v0.6.11
