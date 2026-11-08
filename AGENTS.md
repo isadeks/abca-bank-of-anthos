@@ -28,7 +28,7 @@ CI runs outside this repository; changing scripts here does not change it.
   - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
   - They are not part of `mise run check` (no database locally); CI reports them on the PR.
-- `abca-boa/ui-check`: **your own UI check of the change**, run on the preview (see "UI checks" below). Required when the frontend changes; its video and screenshots are posted on the PR and in the Linear session.
+- `abca-boa/ui-check`: **your own UI check of the change**, run on the preview (see "UI checks" below). Required when a frontend template or static file changes (a UI change); its video and screenshots are posted on the PR and in the Linear session.
 - `abca-boa/e2e`: the Cypress suite in `e2e/` (login, signup, deposit, transfer, home) runs against the preview. Add new specs under `e2e/cypress/integration/`; changing an existing spec needs a maintainer's approval like any existing test.
 - `deployment:Preview`: when the PR changes a service's code, the manifests, `deploy/` or `e2e/`, it is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
 
