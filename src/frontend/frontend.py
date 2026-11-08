@@ -49,6 +49,14 @@ from traced_thread_pool_executor import TracedThreadPoolExecutor
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+THEME_COOKIE = "theme"
+
+
+def theme_from_cookie(value):
+    """Return the theme named by the cookie value: 'dark', or 'light' for
+    a missing or unrecognised value"""
+    return 'dark' if value == 'dark' else 'light'
+
 
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
@@ -57,6 +65,11 @@ def create_app():
     of the Frontend Flask App
     """
     app = Flask(__name__)
+
+    @app.context_processor
+    def inject_theme():
+        """Make the colour theme remembered in the cookie available to templates"""
+        return {'theme': theme_from_cookie(request.cookies.get(THEME_COOKIE))}
 
     # Disabling unused-variable for lines with route decorated functions
     # as pylint thinks they are unused

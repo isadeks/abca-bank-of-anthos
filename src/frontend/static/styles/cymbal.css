@@ -467,3 +467,146 @@ input {
       align-items: center;
       margin-right: 15px;
     }
+
+/* THEME TOGGLE (header) */
+  .theme-toggle {
+    margin-left: auto;
+    margin-right: 8px;
+    padding: 6px;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 50% !important;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .theme-toggle:hover, .theme-toggle:focus {
+    background: rgba(0, 0, 0, 0.08) !important;
+    outline: none;
+  }
+  .theme-toggle .material-icons {
+    font-size: 24px;
+  }
+
+/* DARK THEME: applied when <html data-theme="dark">, set from the "theme" cookie */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+  }
+  html[data-theme="dark"],
+  html[data-theme="dark"] body {
+    background-color: #121212 !important;
+    color: #e0e0e0;
+  }
+  html[data-theme="dark"] .pop-up-label,
+  html[data-theme="dark"] .header-title,
+  html[data-theme="dark"] .card-header-title,
+  html[data-theme="dark"] .nav-link,
+  html[data-theme="dark"] .nav-link:hover,
+  html[data-theme="dark"] #account-user-name,
+  html[data-theme="dark"] .navbar-brand,
+  html[data-theme="dark"] .text-transaction-header,
+  html[data-theme="dark"] .transaction-label-none,
+  html[data-theme="dark"] .table thead th,
+  html[data-theme="dark"] .footer,
+  html[data-theme="dark"] .card,
+  html[data-theme="dark"] .close,
+  html[data-theme="dark"] h1, html[data-theme="dark"] h2, html[data-theme="dark"] h3,
+  html[data-theme="dark"] h4, html[data-theme="dark"] h5, html[data-theme="dark"] h6 {
+    color: #e0e0e0 !important;
+  }
+  html[data-theme="dark"] .navbar-top {
+    background-color: #1e1e1e;
+  }
+  html[data-theme="dark"] #cymbal-logo {
+    filter: brightness(0) invert(1);
+  }
+  html[data-theme="dark"] .footer {
+    background-color: #1e1e1e;
+    border-top-color: #2c2c2c;
+  }
+  html[data-theme="dark"] .card {
+    background-color: #1e1e1e;
+  }
+  html[data-theme="dark"] .snackbar-card {
+    background-color: #2c2c2c !important;
+  }
+  html[data-theme="dark"] .table,
+  html[data-theme="dark"] .table td,
+  html[data-theme="dark"] .table th {
+    color: #e0e0e0;
+    border-color: #333333;
+  }
+  html[data-theme="dark"] .table-hover tbody tr:hover,
+  html[data-theme="dark"] .list tr:hover {
+    background-color: #2a2a2a;
+  }
+  html[data-theme="dark"] .dropdown-menu,
+  html[data-theme="dark"] .modal-content {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+  }
+  html[data-theme="dark"] .dropdown-item {
+    color: #e0e0e0;
+  }
+  html[data-theme="dark"] .dropdown-item:hover,
+  html[data-theme="dark"] .dropdown-item:focus {
+    background-color: #2a2a2a;
+    color: #ffffff;
+  }
+  html[data-theme="dark"] .form-control,
+  html[data-theme="dark"] .custom-select,
+  html[data-theme="dark"] .sign-in input,
+  html[data-theme="dark"] input,
+  html[data-theme="dark"] select {
+    color: #e0e0e0 !important;
+  }
+  html[data-theme="dark"] .form-control:focus {
+    background-color: #2a2a2a !important;
+  }
+  html[data-theme="dark"] .form-control option,
+  html[data-theme="dark"] select option {
+    background-color: #1e1e1e;
+    color: #e0e0e0;
+  }
+  html[data-theme="dark"] .bmd-label-static,
+  html[data-theme="dark"] .bmd-label-floating,
+  html[data-theme="dark"] label,
+  html[data-theme="dark"] .form-text,
+  html[data-theme="dark"] .text-muted,
+  html[data-theme="dark"] small {
+    color: #b0b0b0 !important;
+  }
+  html[data-theme="dark"] .input-group-text {
+    background-color: transparent;
+    color: #e0e0e0;
+  }
+  html[data-theme="dark"] .btn-secondary,
+  html[data-theme="dark"] .btn.btn-secondary,
+  html[data-theme="dark"] .btn-secondary.custom-file-control:before {
+    background-color: transparent !important;
+    color: #5fd37c !important;
+    border-color: #5fd37c !important;
+  }
+  html[data-theme="dark"] .theme-toggle:hover,
+  html[data-theme="dark"] .theme-toggle:focus {
+    background: rgba(255, 255, 255, 0.12) !important;
+  }
+  html[data-theme="dark"] .material-icons,
+  html[data-theme="dark"] .button-icon,
+  html[data-theme="dark"] .money-icon,
+  html[data-theme="dark"] .modal-icon,
+  html[data-theme="dark"] .sign-in i {
+    color: #5fd37c;
+  }
+  html[data-theme="dark"] #deposit-icon,
+  html[data-theme="dark"] #payment-icon {
+    color: white !important;
+  }
+  html[data-theme="dark"] .text-debit,
+  html[data-theme="dark"] .transaction-amount-credit {
+    color: #5fd37c;
+  }
+  html[data-theme="dark"] .text-credit,
+  html[data-theme="dark"] .transaction-amount-debit,
+  html[data-theme="dark"] .invalid-feedback {
+    color: #ff6b6b;
+  }

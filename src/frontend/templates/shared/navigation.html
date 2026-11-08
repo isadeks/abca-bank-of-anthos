@@ -11,6 +11,9 @@
             {{ bank_name }}
           </a>
         {% endif %}
+        <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <span class="material-icons" id="theme-toggle-icon">{{ 'light_mode' if theme == 'dark' else 'dark_mode' }}</span>
+        </button>
         {% if name %}
           <button type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation" class="navbar-toggler navbar-toggler-right">
             <span class="material-icons">menu</span>
