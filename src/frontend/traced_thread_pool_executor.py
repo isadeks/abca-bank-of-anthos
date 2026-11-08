@@ -27,8 +27,12 @@ class TracedThreadPoolExecutor(ThreadPoolExecutor):
 
     def with_otel_context(self, context, function):
         """Attach context"""
-        otel_context.attach(context)
-        return function()
+        token = otel_context.attach(context)
+        try:
+            return function()
+        finally:
+            # Don't leak the request's context into the next task run by this worker
+            otel_context.detach(token)
 
     # pylint: disable-msg=arguments-differ
     def submit(self, function, *args, **kwargs):
