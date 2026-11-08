@@ -94,6 +94,12 @@ spec:
                 configMapKeyRef:
                   key: DEMO_LOGIN_PASSWORD
                   name: demo-data-config
+            - name: BUDGETS_API_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  key: BUDGETS_API_ADDR
+                  name: service-api-config
+                  optional: true
             - name: REGISTERED_OAUTH_CLIENT_ID
               valueFrom:
                 configMapKeyRef:

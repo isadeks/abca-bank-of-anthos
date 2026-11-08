@@ -44,6 +44,7 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 # Local imports
 from api_call import ApiCall, ApiRequest
 from traced_thread_pool_executor import TracedThreadPoolExecutor
+import spend_budget
 
 # Local constants
 BALANCE_NAME = "balance"
@@ -138,8 +139,17 @@ def create_app():
                         CONTACTS_NAME: []}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        budget_future = None
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
+
+            if app.config['BUDGETS_URI']:
+                # get the monthly budget, in parallel with the calls above
+                budget_future = executor.submit(spend_budget.fetch_limit,
+                                                app.config['BUDGETS_URI'],
+                                                username,
+                                                token,
+                                                app.config['BACKEND_TIMEOUT'])
 
             future_to_api_call = {
                 executor.submit(api_call.make_call):
@@ -155,10 +165,15 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        budget = _budget_for_page(budget_future,
+                                  account_id,
+                                  api_response[TRANSACTION_LIST_NAME])
+
         return render_template('index.html',
                                account_id=account_id,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               budget=budget,
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
@@ -169,6 +184,110 @@ def create_app():
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
                                pod_zone=pod_zone)
+
+    def _budget_for_page(budget_future, account_id, transactions):
+        """
+        Build what the home page shows about the monthly budget.
+
+        Returns None if the budgets service is not configured or not available;
+        the page then has no budget section. Otherwise a dict with:
+            limit_cents - the monthly limit, or None if the user has no budget
+            usage       - spend_budget.budget_usage() of this month, or None if
+                          there is no limit or the history could not be loaded
+        """
+        if budget_future is None:
+            return None
+        available, limit_cents = budget_future.result()
+        if not available:
+            return None
+        usage = None
+        if limit_cents is not None and transactions is not None:
+            spent = spend_budget.monthly_spend(transactions, account_id)
+            usage = spend_budget.budget_usage(limit_cents, spent)
+        return {'limit_cents': limit_cents, 'usage': usage}
+
+    @app.route('/budget', methods=['POST'])
+    def set_budget():
+        """
+        Sets the monthly spending limit (form field 'limit', in dollars), or
+        clears it if the form has no limit / the action is 'clear'.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error setting budget: user is not authenticated.')
+            return abort(401)
+        username = decode_token(token)['user']
+        if not app.config['BUDGETS_URI']:
+            return _home_with_message('Budget is not available')
+        timeout = app.config['BACKEND_TIMEOUT']
+        if request.form.get('action') == 'clear':
+            if spend_budget.remove_limit(app.config['BUDGETS_URI'], username,
+                                         token, timeout):
+                return _home_with_message('Budget cleared')
+            return _home_with_message('Could not clear the budget')
+        try:
+            limit_cents = spend_budget.dollars_to_cents(request.form.get('limit', ''))
+            if limit_cents > spend_budget.MAX_LIMIT_CENTS:
+                raise ValueError('limit too large')
+        except ValueError as err:
+            app.logger.error('Error setting budget: %s', str(err))
+            return _home_with_message('Budget not saved: enter an amount such as 500.00')
+        if spend_budget.save_limit(app.config['BUDGETS_URI'], username, token,
+                                   limit_cents, timeout):
+            return _home_with_message('Budget saved')
+        return _home_with_message('Could not save the budget')
+
+    @app.route('/budget/check', methods=['GET'])
+    def check_budget():
+        """
+        Tells whether a payment of ?amount= (dollars) would push this month's
+        spending over the monthly limit. Answers JSON {"exceeds": bool, ...}.
+
+        Never blocks a payment: without a budget, or when the budgets service
+        or the history is unavailable, or the amount is unreadable, "exceeds"
+        is false.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return abort(401)
+        no_warning = jsonify({'exceeds': False})
+        if not app.config['BUDGETS_URI']:
+            return no_warning
+        token_data = decode_token(token)
+        timeout = app.config['BACKEND_TIMEOUT']
+        try:
+            amount_cents = spend_budget.dollars_to_cents(request.args.get('amount', ''))
+        except ValueError:
+            return no_warning
+        available, limit_cents = spend_budget.fetch_limit(
+            app.config['BUDGETS_URI'], token_data['user'], token, timeout)
+        if not available or limit_cents is None:
+            return no_warning
+        history = ApiCall(display_name=TRANSACTION_LIST_NAME,
+                          api_request=ApiRequest(
+                              url=f'{app.config["HISTORY_URI"]}/{token_data["acct"]}',
+                              headers={'Authorization': 'Bearer ' + token},
+                              timeout=timeout),
+                          logger=app.logger).make_call()
+        if not history:
+            return no_warning
+        try:
+            spent = spend_budget.monthly_spend(history.json(), token_data['acct'])
+        except (ValueError, AttributeError):
+            return no_warning
+        return jsonify({
+            'exceeds': spend_budget.would_exceed(limit_cents, spent, amount_cents),
+            'limit_cents': limit_cents,
+            'spent_cents': spent,
+            'amount_cents': amount_cents,
+            'after_cents': spent + amount_cents,
+        })
+
+    def _home_with_message(msg):
+        return redirect(url_for('home',
+                                msg=msg,
+                                _external=True,
+                                _scheme=app.config['SCHEME']))
 
     def _populate_contact_labels(account_id, transactions, contacts):
         """
@@ -671,6 +790,11 @@ def create_app():
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["CONTACTS_URI"] = 'http://{}/contacts'.format(
         os.environ.get('CONTACTS_API_ADDR'))
+    # The budgets service is optional: without its address the home page and
+    # payments work as before, without budgets.
+    budgets_addr = os.environ.get('BUDGETS_API_ADDR')
+    app.config["BUDGETS_URI"] = ('http://{}/budget'.format(budgets_addr)
+                                 if budgets_addr else None)
     app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
     app.config['LOCAL_ROUTING'] = os.getenv('LOCAL_ROUTING_NUM')
     # timeout in seconds for calls to the backend
