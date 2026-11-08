@@ -21,6 +21,8 @@ header (`Bearer <jwt>` or the bare token, as for the contacts service), and
 `<username>` must be the user the token was issued to. Otherwise the service
 answers `401 authentication denied`.
 
+The frontend calls these endpoints with the user's own login token (see `BUDGETS_API_ADDR` below).
+
 The limit is an integer number of **whole cents** (`$500.00` is `50000`).
 
 #### `GET /budget/<username>`

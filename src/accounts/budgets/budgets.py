@@ -37,6 +37,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from db import BudgetsDb
 
 # Largest accepted limit: 1 billion dollars, in cents.
+# The frontend uses the same bound (spend_budget.MAX_LIMIT_CENTS).
 MAX_LIMIT_CENTS = 100_000_000_000
 
 
