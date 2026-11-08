@@ -204,6 +204,13 @@ bottom: 10px;
 }
 
 
+.copy-account-button {
+  margin-left: 8px;
+  padding: 0 8px;
+  vertical-align: middle;
+}
+
+
 /* TRANSACTION TABLE */
 .card-table {
   margin-bottom: 0 !important;

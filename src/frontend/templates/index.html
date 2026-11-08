@@ -48,18 +48,11 @@ limitations under the License.
       </div>
     {% endif %}
 
-      <!-- Top row - overview, account # -->
+      <!-- Top row - overview -->
       <div class="row col-lg-12 align-items-start top-row">
         <div class="col-md-8">
           <small class="text-uppercase text-muted secondary-text">Overview</small>
           <h2 class="header-title">Checking Account</h2>
-        </div>
-
-        <div class="col-md-4 account-info text-right">
-            <p>
-              <span class="account-overview account-icon material-icons">info</span>
-              <span class="account-num-text">Account Number:</span><span class="account-number">{{ account_id }}</span>
-            </p>
         </div>
     </div>
 
@@ -76,6 +69,11 @@ limitations under the License.
                   <span class="h1 mb-0" id="current-balance">
                     {{ format_currency(balance) }}
                   </span>
+                  <p class="account-number-row mt-3 mb-0">
+                    <span class="account-num-text">Account Number:</span>
+                    <span class="account-number" id="account-number">{{ account_id }}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary copy-account-button" id="copy-account-number" data-account-number="{{ account_id }}" aria-label="Copy account number">Copy</button>
+                  </p>
                 </div>
               </div>
             </div>

@@ -15,6 +15,34 @@
  */
  
 document.addEventListener("DOMContentLoaded", function(event) {
+  // Copy the account number to the clipboard
+  var copyButton = document.querySelector("#copy-account-number");
+  if (copyButton) {
+    copyButton.addEventListener("click", function() {
+      var accountNumber = copyButton.getAttribute("data-account-number");
+      var showCopied = function() {
+        copyButton.textContent = "Copied!";
+        setTimeout(function() { copyButton.textContent = "Copy"; }, 2000);
+      };
+      var fallbackCopy = function() {
+        var tmp = document.createElement("textarea");
+        tmp.value = accountNumber;
+        tmp.setAttribute("readonly", "");
+        tmp.style.position = "absolute";
+        tmp.style.left = "-9999px";
+        document.body.appendChild(tmp);
+        tmp.select();
+        try { document.execCommand("copy"); showCopied(); } catch (err) {}
+        document.body.removeChild(tmp);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(accountNumber).then(showCopied, fallbackCopy);
+      } else {
+        fallbackCopy();
+      }
+    });
+  }
+
   // Deposit modal client-side validation
   var depositForm = document.querySelector("#deposit-form");
   depositForm.addEventListener("submit", function(e) {
