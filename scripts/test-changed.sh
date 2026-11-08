@@ -19,7 +19,7 @@ for d in $svc_dirs; do
   elif [ -f "$d/pyproject.toml" ]; then
     if ls "$d"/tests/*.py >/dev/null 2>&1; then
       echo "== $d (pytest)"; ran=1
-      (cd "$d" && uv sync -q --frozen && PYTHONPATH=.. uv run pytest -q) || rc=1
+      (cd "$d" && uv sync -q --frozen && PYTHONPATH=.. uv run pytest -q --ignore=tests/integration) || rc=1
     else echo "== $d: no tests/ yet (add them: CI requires a test with every source change)"; fi
   fi
 done

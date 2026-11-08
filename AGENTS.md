@@ -24,10 +24,14 @@ CI runs outside this repository; changing scripts here does not change it.
 - `abca-boa/ci`: the unit tests of every changed service, then its image build.
 - `abca-boa/tests`: a change to a service's source must add or change a test.
 - `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. Add new test files or new test cases instead of changing existing ones.
+- `abca-boa/integration`: integration tests run against the **real database images** (Postgres with the Bank of Anthos schema and demo data), in CI only:
+  - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
+  - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
+  - They are not part of `mise run check` (no database locally); CI reports them on the PR.
 - `abca-boa/e2e`: the Cypress suite in `e2e/` (login, signup, deposit, transfer, home) runs against the preview. Add new specs under `e2e/cypress/integration/`; changing an existing spec needs a maintainer's approval like any existing test.
-- `deployment:Preview`: the PR is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
+- `deployment:Preview`: when the PR changes a service's code, the manifests, `deploy/` or `e2e/`, it is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
 
-Merging to `main` releases to production: the changed services are built, deployed, smoke-tested, and rolled back automatically on failure.
+A change to tests or docs only gets no preview, and merging it leaves production as it is. Merging anything else to `main` releases to production: the changed services are built, deployed, smoke-tested, and rolled back automatically on failure.
 
 ## Conventions
 - Each service is a directory under `src/` with a `Dockerfile` (or a Jib `pom.xml`). Its Kubernetes manifest lives in `kubernetes-manifests/<name>.yaml`, listed in `kubernetes-manifests/kustomization.yaml`.
