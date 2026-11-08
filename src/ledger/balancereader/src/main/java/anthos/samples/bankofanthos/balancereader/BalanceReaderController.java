@@ -161,7 +161,9 @@ public final class BalanceReaderController {
                 return new ResponseEntity<>("not authorized",
                     HttpStatus.UNAUTHORIZED);
             }
-            // Load from cache
+            // Always serve a fresh balance: the ledger poller can lag behind
+            // writes, so a just-made deposit could show an old balance.
+            cache.invalidate(accountId);
             Long balance = cache.get(accountId);
             return new ResponseEntity<Long>(balance, HttpStatus.OK);
         } catch (JWTVerificationException e) {
