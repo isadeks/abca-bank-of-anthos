@@ -10,7 +10,6 @@ resources:
   - namespace.yaml
   - ../../kubernetes-manifests
 patches:
-  - path: telemetry-off.yaml
   - path: frontend-lb.yaml
   - target: {kind: ServiceAccount, name: bank-of-anthos}
     patch: |-
