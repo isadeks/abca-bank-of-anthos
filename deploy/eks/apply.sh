@@ -33,4 +33,19 @@ PY
 done
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 "$here/jwt-key.sh" "$NS"
+# Previews don't run the load generator: it only adds noise to the smoke/e2e checks and CPU to the
+# node. Production keeps it (it drives the traffic behind the telemetry).
+if [ "$NS" != boa ]; then
+  python3 - "$k" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+patch = ("  - target: {kind: Deployment, name: loadgenerator}\n"
+         "    patch: |-\n"
+         "      - op: replace\n"
+         "        path: /spec/replicas\n"
+         "        value: 0\n")
+assert "\npatches:\n" in s
+open(p, "w").write(s.replace("\npatches:\n", "\npatches:\n" + patch, 1))
+PY
+fi
 kubectl apply -k "$work/deploy/eks"
