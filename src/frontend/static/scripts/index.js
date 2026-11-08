@@ -60,6 +60,56 @@ document.addEventListener("DOMContentLoaded", function(event) {
     });
   });
 
+  // Budget warning: before a payment is sent, ask the server whether it would
+  // push this month's spending over the monthly limit. The payment is still
+  // allowed after the user confirms. Any problem with the check lets the
+  // payment go through as before.
+  var budgetWarning = document.querySelector("#budget-warning");
+  var paymentButtons = document.querySelector("#payment-buttons");
+
+  function formatDollars(cents) {
+    return "$" + (cents / 100).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  function resetBudgetWarning() {
+    budgetWarning.classList.add("hidden");
+    paymentButtons.classList.remove("hidden");
+  }
+
+  function showBudgetWarning(check) {
+    document.querySelector("#budget-warning-text").textContent =
+      "this payment of " + formatDollars(check.amount_cents) + " would bring this month's spending to " +
+      formatDollars(check.after_cents) + ", over your monthly budget of " + formatDollars(check.limit_cents) + ".";
+    paymentButtons.classList.add("hidden");
+    budgetWarning.classList.remove("hidden");
+  }
+
+  paymentForm.addEventListener("submit", function(e) {
+    if (e.defaultPrevented || paymentForm.dataset.budgetCheck !== "true") {
+      return;
+    }
+    e.preventDefault();
+    var amount = document.querySelector("#payment-amount").value;
+    fetch("/budget/check?amount=" + encodeURIComponent(amount), {credentials: "same-origin"})
+      .then(function(resp) { return resp.ok ? resp.json() : {exceeds: false}; })
+      .catch(function() { return {exceeds: false}; })
+      .then(function(check) {
+        if (check.exceeds) {
+          showBudgetWarning(check);
+        } else {
+          paymentForm.submit();
+        }
+      });
+  });
+
+  document.querySelector("#budget-warning-confirm").addEventListener("click", function() {
+    paymentForm.submit();
+  });
+
+  document.querySelector("#budget-warning-cancel").addEventListener("click", function() {
+    resetBudgetWarning();
+  });
+
   // Handle new account option in Send Payment modal
   document.querySelector("#payment-accounts").addEventListener("change", function(e) {
     RefreshModals();
@@ -93,6 +143,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
       } else {
         document.querySelector("#otherDepositInputs").classList.add("hidden");
       }
+      resetBudgetWarning();
       // generate new uuids
       document.querySelector("#payment-uuid").value = uuidv4();
       document.querySelector("#deposit-uuid").value = uuidv4();

@@ -54,6 +54,8 @@ Implemented in Python with Flask.
     - the address and port of the `transactionhistory` service
   - `CONTACTS_API_ADDR`
     - the address and port of the `contacts` service
+  - `BUDGETS_API_ADDR`
+    - the address and port of the `budgets` service. Optional: without it, or when the service is down, the home page shows no budget and payments are never warned about.
   - `USERSERVICE_API_ADDR`
     - the address and port of the `userservice`
 
