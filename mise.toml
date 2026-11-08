@@ -7,9 +7,13 @@ python = "3.14"
 description = "Unit tests of the services changed against main (ALL=1 for every service)"
 run = "scripts/test-changed.sh"
 
+[tasks.check]
+description = "Pre-push check: unit tests, build, and CI's rule gates for the changed services"
+run = "scripts/check.sh"
+
 [tasks.build]
-description = "Same as test: the images are built by CI"
-run = "scripts/test-changed.sh"
+description = "Same as check: the images are built by CI"
+run = "scripts/check.sh"
 
 [tasks.lint]
 run = "true"

@@ -15,7 +15,7 @@
 .-PHONY: cluster deploy deploy-continuous logs checkstyle check-env
 
 CLUSTER=bank-of-anthos
-E2E_PATH=${PWD}/.github/workflows/ui-tests/
+E2E_PATH=${PWD}/e2e/
 
 cluster: check-env
 	gcloud container clusters create ${CLUSTER} \

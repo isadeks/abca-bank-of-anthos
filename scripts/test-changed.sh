@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 BASE="${BASE:-origin/main}"
-git fetch -q origin main 2>/dev/null || true
+[ "$BASE" = origin/main ] && { git fetch -q origin main 2>/dev/null || true; }
 if [ "${ALL:-0}" = 1 ]; then changed=$(git ls-files); else
   changed=$( { git diff --name-only "$(git merge-base "$BASE" HEAD)"; git diff --name-only; git ls-files --others --exclude-standard; } | sort -u); fi
 svc_dirs=$(git ls-files 'src/**/Dockerfile' 'src/**/pom.xml' | xargs -n1 dirname | sort -u | grep -v -e ledgermonolith -e '^src/\(accounts\|ledger\)$' || true)

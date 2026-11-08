@@ -29,7 +29,7 @@ To use the Docker command line tool directly, the test directory and URL must be
 From the project's root, run:
 
 ```console
-E2E_PATH=${PWD}/.github/workflows/ui-tests
+E2E_PATH=${PWD}/e2e
 E2E_URL=http://$(kubectl get service frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 docker run -it -v ${E2E_PATH}:/e2e -w /e2e -e CYPRESS_baseUrl=${E2E_URL} -e CYPRESS_CI=false cypress/included:4.3.0
 ```

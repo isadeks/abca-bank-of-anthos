@@ -12,9 +12,11 @@ Bank of Anthos is a demo bank: 6 services, 2 Postgres databases and a load gener
 | transactionhistory | `src/ledger/transactionhistory` | Java 17 (Spring Boot) | `src/test/java` |
 | accounts-db, ledger-db | `src/accounts/accounts-db`, `src/ledger/ledger-db` | Postgres images | – |
 | loadgenerator | `src/loadgenerator` | Python (Locust) | – |
+| e2e (Cypress) | `e2e/` | JavaScript | runs against a deployed environment |
 
-## Test before you push
-- `mise run test` runs the unit tests of every service you changed (Python: uv + pytest; Java: `./mvnw test` for that module). `ALL=1 mise run test` runs all of them.
+## Check before you push
+- `mise run check` runs what CI checks without a cluster, for the services you changed: their unit tests, the build (Java `package`, Python lockfile + import), and CI's rule gates (a source change needs a test; changing an existing test needs approval). Fix until it passes.
+- `mise run test` runs only the unit tests (`ALL=1` for every service).
 - Python tests import the service as a package (`from contacts.contacts import create_app`), so they run from the service directory with `PYTHONPATH=..`. Follow the existing tests' mocking style (`mock_open` for the key file, patched `os.environ`).
 
 ## What CI checks on every pull request
@@ -22,6 +24,7 @@ CI runs outside this repository; changing scripts here does not change it.
 - `abca-boa/ci`: the unit tests of every changed service, then its image build.
 - `abca-boa/tests`: a change to a service's source must add or change a test.
 - `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. Add new test files or new test cases instead of changing existing ones.
+- `abca-boa/e2e`: the Cypress suite in `e2e/` (login, signup, deposit, transfer, home) runs against the preview. Add new specs under `e2e/cypress/integration/`; changing an existing spec needs a maintainer's approval like any existing test.
 - `deployment:Preview`: the PR is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
 
 Merging to `main` releases to production: the changed services are built, deployed, smoke-tested, and rolled back automatically on failure.

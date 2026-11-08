@@ -18,7 +18,7 @@ metadata:
 build:
   artifacts:
     - image: e2e-tests
-      context: .github/workflows/ui-tests
+      context: e2e
 verify:
   - name: e2e-test
     container: 
