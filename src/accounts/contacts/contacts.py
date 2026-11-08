@@ -39,7 +39,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from db import ContactsDb
 
 
-def create_app():
+def create_app():  # app factory (also used by the CI pipeline check)
     """Flask application factory to create instances
     of the Contact Service Flask App
     """
