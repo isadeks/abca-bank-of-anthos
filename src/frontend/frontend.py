@@ -50,6 +50,27 @@ BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
 
+def summarize_transactions(account_id, transactions):
+    """
+    Totals the money coming in and going out of an account.
+
+    Params: account_id - the account the transactions belong to
+            transactions - a list of transactions as key/value dicts, or None
+    Returns: a dict with 'money_in' and 'money_out' (amounts in cents) and
+             'count' (number of transactions involving the account)
+    """
+    summary = {'money_in': 0, 'money_out': 0, 'count': 0}
+    for trans in transactions or []:
+        if trans.get('toAccountNum') == account_id:
+            summary['money_in'] += trans['amount']
+        elif trans.get('fromAccountNum') == account_id:
+            summary['money_out'] += trans['amount']
+        else:
+            continue
+        summary['count'] += 1
+    return summary
+
+
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
 def create_app():
@@ -163,6 +184,8 @@ def create_app():
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
+                               summary=summarize_transactions(
+                                   account_id, api_response[TRANSACTION_LIST_NAME]),
                                message=request.args.get('msg', None),
                                name=display_name,
                                platform=platform,

@@ -66,7 +66,7 @@ limitations under the License.
     <!-- Balance / Deposit / Send Payment row -->
     <div class="row col-lg-12 align-items-start">
       <div class="col-lg-4">
-          <div class="card">
+          <div class="card balance-card">
             <div class="card-body">
               <div class="row align-items-start">
                 <div class="col">
@@ -76,6 +76,9 @@ limitations under the License.
                   <span class="h1 mb-0" id="current-balance">
                     {{ format_currency(balance) }}
                   </span>
+                </div>
+                <div class="button-icon col-auto">
+                  <span class="material-icons balance-icon">account_balance_wallet</span>
                 </div>
               </div>
             </div>
@@ -116,10 +119,43 @@ limitations under the License.
         </div>
       </div>
 
+      <!-- Activity summary -->
+      {% if history is not none and history|length > 0 %}
+      <div class="row col-lg-12 align-items-start" id="activity-summary">
+        <div class="col-md-4">
+          <div class="card summary-card summary-card-credit">
+            <div class="card-body">
+              <span class="summary-icon summary-icon-credit material-icons">south_west</span>
+              <p class="text-uppercase mb-2 summary-label">Money In</p>
+              <span class="h3 mb-0 transaction-amount-credit" id="summary-money-in">{{ format_currency(summary.money_in) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card summary-card summary-card-debit">
+            <div class="card-body">
+              <span class="summary-icon summary-icon-debit material-icons">north_east</span>
+              <p class="text-uppercase mb-2 summary-label">Money Out</p>
+              <span class="h3 mb-0 transaction-amount-debit" id="summary-money-out">{{ format_currency(summary.money_out) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card summary-card">
+            <div class="card-body">
+              <span class="summary-icon material-icons">receipt_long</span>
+              <p class="text-uppercase mb-2 summary-label">Recent Transactions</p>
+              <span class="h3 mb-0" id="summary-count">{{ summary.count }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Transaction History Table -->
       <div class="row col-lg-12 mb-4 align-items-start">
         <div class="col-lg-12">
-          <div class="card" class="transaction-card">
+          <div class="card transaction-card">
             <div class="card-table-header">
               <div class="row align-items-start">
                 <div class="col">
@@ -157,13 +193,13 @@ limitations under the License.
                 </thead>
                 <tbody class="list" id="transaction-list">
                 {% for t in history %}
-                  <tr>
+                  <tr class="transaction-row">
                     <td class="text-uppercase transaction-date">
                       <p>{{ format_timestamp_month(t.timestamp) }} {{ format_timestamp_day(t.timestamp) }}</p>
                     </td>
                     {% if t.toAccountNum == account_id %}
                       <td class="transaction-type">
-                        <span class="text-debit">●</span> Credit
+                        <span class="type-badge type-badge-credit"><span class="material-icons">south_west</span>Credit</span>
                       </td>
                       <td class="transaction-account">
                         {{ t.fromAccountNum }}
@@ -180,7 +216,7 @@ limitations under the License.
                       </td>
                     {% elif t.fromAccountNum == account_id %}
                       <td class="transaction-type">
-                        <span class="text-credit">●</span> Debit
+                        <span class="type-badge type-badge-debit"><span class="material-icons">north_east</span>Debit</span>
                       </td>
                       <td class="transaction-account">
                         {{ t.toAccountNum }}
