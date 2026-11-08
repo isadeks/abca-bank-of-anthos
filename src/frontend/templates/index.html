@@ -127,6 +127,9 @@ limitations under the License.
                     Transaction History
                   </h4>
                 </div>
+                <div class="col-auto">
+                  <a class="btn btn-primary btn-sm" id="download-csv" href="{{ url_for('transactions_csv') }}" download="transactions.csv">Download CSV</a>
+                </div>
               </div>
             </div>
             <div class="table-responsive mb-0" id="transaction-table">

@@ -17,7 +17,9 @@
 
 # Module imports
 import concurrent.futures
+import csv
 import datetime
+import io
 import json
 import logging
 import os
@@ -169,6 +171,93 @@ def create_app():
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
                                pod_zone=pod_zone)
+
+    @app.route('/transactions.csv')
+    def transactions_csv():
+        """
+        Downloads the logged-in user's transaction history as a CSV file.
+        Redirects to /login if token is not valid.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        token_data = decode_token(token)
+        username = token_data['user']
+        account_id = token_data['acct']
+        hed = {'Authorization': 'Bearer ' + token}
+
+        history_call = ApiCall(
+            display_name=TRANSACTION_LIST_NAME,
+            api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
+                                   headers=hed,
+                                   timeout=app.config['BACKEND_TIMEOUT']),
+            logger=app.logger)
+        contacts_call = ApiCall(
+            display_name=CONTACTS_NAME,
+            api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
+                                   headers=hed,
+                                   timeout=app.config['BACKEND_TIMEOUT']),
+            logger=app.logger)
+
+        history_response = history_call.make_call()
+        if not history_response:
+            app.logger.error('Could not load transactions for CSV export.')
+            return make_response('Could not load transactions', 502)
+        transactions = history_response.json()
+
+        contacts = []
+        contacts_response = contacts_call.make_call()
+        if contacts_response:
+            contacts = contacts_response.json()
+        _populate_contact_labels(account_id, transactions, contacts)
+
+        body = _transactions_to_csv(account_id, transactions)
+        resp = make_response(body)
+        resp.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        resp.headers['Content-Disposition'] = \
+            'attachment; filename="transactions.csv"'
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+
+    def _csv_safe(value):
+        """
+        Neutralize spreadsheet formula injection: text starting with a
+        formula character is prefixed with a single quote.
+        """
+        value = '' if value is None else str(value)
+        if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + value
+        return value
+
+    def _transactions_to_csv(account_id, transactions):
+        """
+        Build CSV text (Date, Description, Amount, Type) for the transactions.
+        Credits have a positive amount, debits a negative one, in dollars.
+        Description is the contact label if known, else the counterparty account.
+        """
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator='\r\n')
+        writer.writerow(['Date', 'Description', 'Amount', 'Type'])
+        for trans in transactions or []:
+            if trans['toAccountNum'] == account_id:
+                trans_type = 'Credit'
+                counterparty = trans['fromAccountNum']
+                sign = 1
+            elif trans['fromAccountNum'] == account_id:
+                trans_type = 'Debit'
+                counterparty = trans['toAccountNum']
+                sign = -1
+            else:
+                continue
+            date = datetime.datetime.strptime(
+                trans['timestamp'], app.config['TIMESTAMP_FORMAT']).date().isoformat()
+            description = trans.get('accountLabel') or counterparty
+            amount = sign * abs(Decimal(trans['amount']) / 100)
+            writer.writerow([date, _csv_safe(description),
+                             '{:.2f}'.format(amount), trans_type])
+        return out.getvalue()
 
     def _populate_contact_labels(account_id, transactions, contacts):
         """
