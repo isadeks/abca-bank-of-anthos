@@ -1,0 +1,15 @@
+# Toolchain for working on Bank of Anthos locally (and for coding agents).
+[tools]
+java = "temurin-17"
+python = "3.14"
+
+[tasks.test]
+description = "Unit tests of the services changed against main (ALL=1 for every service)"
+run = "scripts/test-changed.sh"
+
+[tasks.build]
+description = "Same as test: the images are built by CI"
+run = "scripts/test-changed.sh"
+
+[tasks.lint]
+run = "true"
