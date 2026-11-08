@@ -28,6 +28,7 @@ CI runs outside this repository; changing scripts here does not change it.
   - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
   - They are not part of `mise run check` (no database locally); CI reports them on the PR.
+- `abca-boa/ui-check`: **your own UI check of the change**, run on the preview (see "UI checks" below). Required when the frontend changes; its video and screenshots are posted on the PR and in the Linear session.
 - `abca-boa/e2e`: the Cypress suite in `e2e/` (login, signup, deposit, transfer, home) runs against the preview. Add new specs under `e2e/cypress/integration/`; changing an existing spec needs a maintainer's approval like any existing test.
 - `deployment:Preview`: when the PR changes a service's code, the manifests, `deploy/` or `e2e/`, it is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
 
@@ -42,3 +43,12 @@ A change to tests or docs only gets no preview, and merging it leaves production
   - Configure services with the standard variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`) in the manifests, and include `k8s.namespace.name` (from the downward API) so a preview's traces can be told apart from production's.
   - Use W3C trace context (`traceparent`) between services.
 - Never commit secrets, account ids or IP addresses; `deploy/eks/apply.sh` fills in environment-specific values.
+
+## UI checks (`.abca/ui-checks/*.spec.ts`)
+When you change what a user sees, add a Playwright check that shows the change working. CI runs it against your PR's preview, records a video and turns your steps into a captioned walk-through that reviewers watch on the PR and in Linear.
+- One file per change at the top level of `.abca/ui-checks/` (files in sub-folders don't run). Use `@playwright/test` and the CI helper `./ui-annotate` only.
+- Environment: `PREVIEW_URL` (Playwright's `baseURL`, so `page.goto('/home')` works), `DEMO_USER` / `DEMO_PASSWORD` (the demo account `testuser` / `bankofanthos`, which has demo transactions and contacts). If you need an empty account, sign up a new user through `/signup` with a unique name.
+- A good check: `await signIn(page)` → drive the UI to your change → 2–6 steps, each `await highlight(page, el, 'short label')` then `await shot(page, 'Caption a reviewer reads', { focus: el })` → **assert** the behaviour with `expect`. Captions describe what the user sees ("Spending by category on the home page"), not test internals.
+- Stable selectors: the templates' ids (`#current-balance`, `#transaction-table`, `#deposit-form`, `#payment-form`, …); add an `id` or `data-testid` to new elements you need to find.
+- 120 s per test, no retries. An example: `.abca/ui-checks/examples/home-balance.spec.ts`.
+
