@@ -40,15 +40,63 @@ document.addEventListener("DOMContentLoaded", function(event) {
 
   // Send payment modal client-side validation
   var paymentForm = document.querySelector("#payment-form");
+  var paymentConfirm = document.querySelector("#payment-confirm");
+  var largePaymentThreshold = parseFloat(paymentConfirm.dataset.threshold);
+
+  // Show the payment form (true) or the large payment confirmation step (false)
+  function showPaymentDetails(show) {
+    document.querySelectorAll(".payment-step").forEach(function(step) {
+      step.classList.toggle("hidden", !show);
+    });
+    paymentConfirm.classList.toggle("hidden", show);
+  }
+
+  // Describe the recipient as shown in the dropdown, or the typed account number
+  function paymentRecipient() {
+    var select = document.querySelector("#payment-accounts");
+    if (select.value == "add") {
+      var label = document.querySelector("#contact_label").value.trim();
+      var num = document.querySelector("#contact_account_num").value;
+      return label ? label + " - " + num : num;
+    }
+    return select.options[select.selectedIndex].text;
+  }
+
   paymentForm.addEventListener("submit", function(e) {
     // Check if account number is required
     document.querySelector("#contact_account_num").required = (document.querySelector("#payment-accounts").value == "add");
 
+    var amount = parseFloat(document.querySelector("#payment-amount").value);
     if(!paymentForm.checkValidity() || document.querySelector("#payment-amount").value <= 0.00){
       e.preventDefault();
       e.stopPropagation();
+    } else if (amount > largePaymentThreshold) {
+      // Ask the user to confirm large payments before they are submitted
+      e.preventDefault();
+      e.stopPropagation();
+      document.querySelector("#payment-confirm-message").textContent =
+        "You are about to send $" + amount.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) +
+        " to " + paymentRecipient();
+      showPaymentDetails(false);
     }
     paymentForm.classList.add("was-validated");
+  });
+
+  // Back from the confirmation step to the payment form
+  document.querySelector("#payment-confirm-back").addEventListener("click", function() {
+    showPaymentDetails(true);
+  });
+
+  // Always reopen the payment modal on the payment form, however it was closed
+  if (window.jQuery) {
+    window.jQuery("#sendPayment").on("hidden.bs.modal", function() {
+      showPaymentDetails(true);
+    });
+  }
+
+  // Confirmed: submit the payment (form.submit() does not re-run the submit handler)
+  document.querySelector("#payment-confirm-send").addEventListener("click", function() {
+    paymentForm.submit();
   });
 
   // Reset form on cancel event
@@ -56,6 +104,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     paymentCancel.addEventListener("click", function () {
       paymentForm.reset();
       paymentForm.classList.remove("was-validated");
+      showPaymentDetails(true);
       RefreshModals();
     });
   });

@@ -306,7 +306,7 @@ limitations under the License.
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>
-              <div class="modal-body">
+              <div class="modal-body payment-step" id="payment-details">
                 <div class="row">
                   <div class="col-md-10 offset-md-1 mb-4">
                     <label class="text-uppercase text-muted secondary-text mb-3" for="payment-accounts">Recipient</label>
@@ -356,7 +356,7 @@ limitations under the License.
                 </div>
               </div>
 
-              <div class="modal-body">
+              <div class="modal-body payment-step" id="payment-actions">
                 <div class="row align-items-end text-right">
                   <div class="col-md-10 offset-md-1 text-right align-items-end">
                       <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
@@ -366,6 +366,21 @@ limitations under the License.
               </div>
 
             <input type="hidden" id="payment-uuid" name="uuid">
+
+              <!-- Confirmation step, shown before a payment over the large-payment threshold is submitted -->
+              <div class="modal-body hidden" id="payment-confirm" data-threshold="1000" role="alert">
+                <div class="row">
+                  <div class="col-md-10 offset-md-1 mb-4">
+                    <p class="h5 mb-0" id="payment-confirm-message"></p>
+                  </div>
+                </div>
+                <div class="row align-items-end text-right">
+                  <div class="col-md-10 offset-md-1 text-right align-items-end">
+                    <button type="button" class="btn btn-secondary" id="payment-confirm-back">Back</button>
+                    <button type="button" class="btn btn-primary btn-with-padding" id="payment-confirm-send">Confirm and send</button>
+                  </div>
+                </div>
+              </div>
             </form>
           </div>
         </div>
