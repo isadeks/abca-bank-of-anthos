@@ -35,8 +35,8 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-from opentelemetry.propagators.cloud_trace_propagator import CloudTraceFormatPropagator
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
@@ -722,15 +722,19 @@ def create_app():
     app.logger.setLevel(logging.getLogger('gunicorn.error').level)
     app.logger.info('Starting frontend service.')
 
-    # Set up tracing and export spans to Cloud Trace.
+    # Set up tracing and export spans over OTLP to the OpenTelemetry collector.
     if os.environ['ENABLE_TRACING'] == "true":
         app.logger.info("✅ Tracing enabled.")
+        # The endpoint, service name and resource attributes (including
+        # k8s.namespace.name) come from the standard OTEL_* environment
+        # variables, read by the SDK and the exporter.
         trace.set_tracer_provider(TracerProvider())
-        cloud_trace_exporter = CloudTraceSpanExporter()
+        otlp_exporter = OTLPSpanExporter()
         trace.get_tracer_provider().add_span_processor(
-            BatchSpanProcessor(cloud_trace_exporter)
+            BatchSpanProcessor(otlp_exporter)
         )
-        set_global_textmap(CloudTraceFormatPropagator())
+        # W3C trace context (traceparent) between services
+        set_global_textmap(TraceContextTextMapPropagator())
         # Add tracing auto-instrumentation for Flask, jinja and requests
         FlaskInstrumentor().instrument_app(app)
         RequestsInstrumentor().instrument()
