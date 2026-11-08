@@ -50,6 +50,52 @@ BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
 
+SPENDING_TOP_N = 5
+
+
+def spending_by_contact(account_id, transactions, contacts, now,
+                        timestamp_format, limit=SPENDING_TOP_N):
+    """
+    Total sent to each contact during the calendar month of `now` (UTC).
+
+    Params: account_id - the account id of the user owning the transactions
+            transactions - list of transaction dicts from the history service
+            contacts - list of contact dicts (account_num, label)
+            now - timezone-aware datetime that defines "this month"
+            timestamp_format - strptime format of the transaction timestamps
+            limit - maximum number of contacts to return
+
+    Returns a list of {'label', 'account_num', 'amount'} (amount in cents),
+    largest first, at most `limit` entries. Only debits to accounts that are
+    in the contact list count. Returns [] if transactions or contacts is None.
+    """
+    if not account_id or transactions is None or contacts is None:
+        return []
+    now = now.astimezone(datetime.timezone.utc)
+    labels = {c['account_num']: c.get('label') or c['account_num']
+              for c in contacts}
+    totals = {}
+    for trans in transactions:
+        if trans.get('fromAccountNum') != account_id:
+            continue
+        recipient = trans.get('toAccountNum')
+        if recipient not in labels:
+            continue
+        try:
+            when = datetime.datetime.strptime(trans['timestamp'], timestamp_format)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=datetime.timezone.utc)
+        when = when.astimezone(datetime.timezone.utc)
+        if (when.year, when.month) != (now.year, now.month):
+            continue
+        totals[recipient] = totals.get(recipient, 0) + trans['amount']
+    ranked = sorted(totals.items(), key=lambda item: (-item[1], labels[item[0]]))
+    return [{'label': labels[num], 'account_num': num, 'amount': amount}
+            for num, amount in ranked[:limit]]
+
+
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
 def create_app():
@@ -155,7 +201,15 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        spending = spending_by_contact(
+            account_id,
+            api_response[TRANSACTION_LIST_NAME],
+            api_response[CONTACTS_NAME],
+            datetime.datetime.now(datetime.timezone.utc),
+            app.config['TIMESTAMP_FORMAT'])
+
         return render_template('index.html',
+                               spending=spending,
                                account_id=account_id,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
