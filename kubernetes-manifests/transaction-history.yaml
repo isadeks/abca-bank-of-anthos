@@ -107,6 +107,7 @@ spec:
             initialDelaySeconds: 120
             periodSeconds: 5
             timeoutSeconds: 10
+            failureThreshold: 6
           name: transactionhistory
           readinessProbe:
             httpGet:
@@ -117,11 +118,11 @@ spec:
             timeoutSeconds: 10
           resources:
             limits:
-              cpu: 500m
+              cpu: 1000m
               ephemeral-storage: 0.5Gi
               memory: 512Mi
             requests:
-              cpu: 100m
+              cpu: 250m
               ephemeral-storage: 0.5Gi
               memory: 256Mi
           securityContext:
