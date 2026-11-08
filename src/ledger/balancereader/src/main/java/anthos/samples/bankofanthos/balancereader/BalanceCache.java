@@ -59,9 +59,18 @@ public class BalanceCache {
                 throws ResourceAccessException,
                 DataAccessResourceFailureException {
                 LOGGER.debug("Cache loaded from db");
-                Long balance = dbRepo.findBalance(accountId, localRoutingNum);
-                if (balance == null) {
-                    balance = 0L;
+                // Net the account's ledger entries the same way the ledger
+                // poller applies them, so the cache and the poller agree.
+                long balance = 0L;
+                for (Transaction t : dbRepo.findLatest(0L)) {
+                    if (accountId.equals(t.getToAccountNum())
+                        && localRoutingNum.equals(t.getToRoutingNum())) {
+                        balance += t.getAmount();
+                    }
+                    if (accountId.equals(t.getFromAccountNum())
+                        && localRoutingNum.equals(t.getFromRoutingNum())) {
+                        balance -= t.getAmount();
+                    }
                 }
                 return balance;
             }
