@@ -54,7 +54,7 @@ SPENDING_TOP_N = 5
 
 
 def spending_by_contact(account_id, transactions, contacts, now,
-                        timestamp_format, limit=SPENDING_TOP_N):
+                        timestamp_format):
     """
     Total sent to each contact during the calendar month of `now` (UTC).
 
@@ -63,10 +63,9 @@ def spending_by_contact(account_id, transactions, contacts, now,
             contacts - list of contact dicts (account_num, label)
             now - timezone-aware datetime that defines "this month"
             timestamp_format - strptime format of the transaction timestamps
-            limit - maximum number of contacts to return
 
     Returns a list of {'label', 'account_num', 'amount'} (amount in cents),
-    largest first, at most `limit` entries. Only debits to accounts that are
+    largest first, at most SPENDING_TOP_N entries. Only debits to accounts that are
     in the contact list count. Returns [] if transactions or contacts is None.
     """
     if not account_id or transactions is None or contacts is None:
@@ -93,7 +92,7 @@ def spending_by_contact(account_id, transactions, contacts, now,
         totals[recipient] = totals.get(recipient, 0) + trans['amount']
     ranked = sorted(totals.items(), key=lambda item: (-item[1], labels[item[0]]))
     return [{'label': labels[num], 'account_num': num, 'amount': amount}
-            for num, amount in ranked[:limit]]
+            for num, amount in ranked[:SPENDING_TOP_N]]
 
 
 # pylint: disable-msg=too-many-locals
