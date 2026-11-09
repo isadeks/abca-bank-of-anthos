@@ -635,6 +635,49 @@ def create_app():
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
 
+    support_pages = {
+        'help': ('Help',
+                 'Sign in with your username and password to view your '
+                 'balance, make payments and deposit funds. Contacts you '
+                 'save can be reused for future payments.'),
+        'privacy': ('Privacy',
+                    'Bank of Anthos is a demo application. Do not enter '
+                    'real personal or financial information.'),
+        'contact': ('Contact',
+                    'This is a demo bank, so there is no support team to '
+                    'reach. Questions about the project can be raised on '
+                    'its GitHub repository.'),
+    }
+
+    def _support_page(page):
+        """Renders a static support page linked from the footer"""
+        title, text = support_pages[page]
+        return render_template('support.html',
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cluster_name=cluster_name,
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               platform=platform,
+                               platform_display_name=platform_display_name,
+                               pod_name=pod_name,
+                               pod_zone=pod_zone,
+                               title=title,
+                               text=text)
+
+    @app.route('/help')
+    def help_page():
+        """Help page linked from the footer"""
+        return _support_page('help')
+
+    @app.route('/privacy')
+    def privacy_page():
+        """Privacy page linked from the footer"""
+        return _support_page('privacy')
+
+    @app.route('/contact')
+    def contact_page():
+        """Contact page linked from the footer"""
+        return _support_page('contact')
+
     @app.route('/logout', methods=['POST'])
     def logout():
         """
