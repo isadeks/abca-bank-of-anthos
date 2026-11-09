@@ -50,6 +50,15 @@ BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
 
+
+class TransactionError(UserWarning):
+    """The ledger could not process a transaction; carries the status to respond with"""
+
+    def __init__(self, message, status_code=400):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
 def create_app():
@@ -105,6 +114,16 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
+        return _render_home(token, message=request.args.get('msg', None))
+
+    def _render_home(token, message=None, is_error=False, status=200):
+        """
+        Renders the home page for a user with a valid token.
+
+        Params: message - optional message shown in the alert banner
+                is_error - whether the message reports a failure
+                status - HTTP status code of the response
+        """
         token_data = decode_token(token)
         display_name = token_data['name']
         username = token_data['user']
@@ -163,12 +182,24 @@ def create_app():
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
-                               message=request.args.get('msg', None),
+                               message=message,
+                               message_is_error=is_error,
                                name=display_name,
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
-                               pod_zone=pod_zone)
+                               pod_zone=pod_zone), status
+
+    def _transaction_failed(token, kind, reason=None, status=400):
+        """
+        Renders the home page with an error message and a failure status.
+
+        Params: kind - 'Payment' or 'Deposit'
+                reason - optional explanation shown after the message
+                status - HTTP status code of the response
+        """
+        msg = f'{kind} failed: {reason}' if reason else f'{kind} failed'
+        return _render_home(token, message=msg, is_error=True, status=status)
 
     def _populate_contact_labels(account_id, transactions, contacts):
         """
@@ -246,21 +277,20 @@ def create_app():
 
         except requests.exceptions.RequestException as err:
             app.logger.error('Error submitting payment: %s', str(err))
+            return _transaction_failed(token, 'Payment', status=502)
+        except TransactionError as err:
+            app.logger.error('Error submitting payment: %s', str(err))
+            return _transaction_failed(token, 'Payment', str(err), err.status_code)
         except UserWarning as warn:
             app.logger.error('Error submitting payment: %s', str(warn))
-            msg = 'Payment failed: {}'.format(str(warn))
-            return redirect(url_for('home',
-                                    msg=msg,
-                                    _external=True,
-                                    _scheme=app.config['SCHEME']))
-        except (ValueError, DecimalException) as num_err:
-            app.logger.error('Error submitting payment: %s', str(num_err))
-            msg = 'Payment failed: {} is not a valid number'.format(user_input)
-
-        return redirect(url_for('home',
-                                msg='Payment failed',
-                                _external=True,
-                                _scheme=app.config['SCHEME']))
+            return _transaction_failed(token, 'Payment', str(warn))
+        except (KeyError, ValueError, DecimalException) as input_err:
+            app.logger.error('Error submitting payment: %s', str(input_err))
+            if isinstance(input_err, KeyError):
+                return _transaction_failed(token, 'Payment', 'missing form field')
+            return _transaction_failed(
+                token, 'Payment',
+                f'{request.form.get("amount", "")} is not a valid number')
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
@@ -313,18 +343,20 @@ def create_app():
 
         except requests.exceptions.RequestException as err:
             app.logger.error('Error submitting deposit: %s', str(err))
+            return _transaction_failed(token, 'Deposit', status=502)
+        except TransactionError as err:
+            app.logger.error('Error submitting deposit: %s', str(err))
+            return _transaction_failed(token, 'Deposit', str(err), err.status_code)
         except UserWarning as warn:
             app.logger.error('Error submitting deposit: %s', str(warn))
-            msg = 'Deposit failed: {}'.format(str(warn))
-            return redirect(url_for('home',
-                                    msg=msg,
-                                    _external=True,
-                                    _scheme=app.config['SCHEME']))
-
-        return redirect(url_for('home',
-                                msg='Deposit failed',
-                                _external=True,
-                                _scheme=app.config['SCHEME']))
+            return _transaction_failed(token, 'Deposit', str(warn))
+        except (KeyError, ValueError, DecimalException) as input_err:
+            app.logger.error('Error submitting deposit: %s', str(input_err))
+            if isinstance(input_err, KeyError):
+                return _transaction_failed(token, 'Deposit', 'missing form field')
+            return _transaction_failed(
+                token, 'Deposit',
+                f'{request.form.get("amount", "")} is not a valid number')
 
     def _submit_transaction(transaction_data):
         app.logger.debug('Submitting transaction.')
@@ -338,7 +370,9 @@ def create_app():
         try:
             resp.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
         except requests.exceptions.HTTPError as http_request_err:
-            raise UserWarning(resp.text) from http_request_err
+            # 4XX: the ledger rejected the transaction; 5XX: backend failure
+            status = 400 if resp.status_code < 500 else 502
+            raise TransactionError(resp.text, status) from http_request_err
         # Short delay to allow the transaction to propagate to balancereader
         # and transaction-history
         sleep(0.25)

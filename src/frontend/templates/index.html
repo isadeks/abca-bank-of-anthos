@@ -25,15 +25,15 @@ limitations under the License.
     <main class="container">
       <!-- Alert on load -->
     {% if message != None %}
-      <div class="row col-lg-12 align-items-start" id="alert-message-div" >
+      <div class="row col-lg-12 align-items-start" id="alert-message-div" {% if message_is_error %}role="alert"{% endif %}>
         <div class="col-lg">
-            <div class="card snackbar-card">
+            <div class="card snackbar-card{% if message_is_error %} border-danger alert-message-error{% endif %}">
               <div class="card-body snackbar-body">
                 <div class="row align-items-center">
                   <div class="col">
-                    <h5 id="alert-message" class="alert-message-container">
+                    <h5 id="alert-message" class="alert-message-container{% if message_is_error %} text-danger{% endif %}">
                       <div class="check-mark-container">
-                        <span class="snackbar-close material-icons">check_circle</span>
+                        <span class="snackbar-close material-icons">{% if message_is_error %}error{% else %}check_circle{% endif %}</span>
                       </div>
                       {{ message }}
                     </h5>
