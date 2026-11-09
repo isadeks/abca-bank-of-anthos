@@ -37,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -73,9 +74,13 @@ class SpanAttributesTest {
         span = mock(Span.class);
         when(tracer.currentSpan()).thenReturn(span);
 
+        @SuppressWarnings("unchecked")
+        ObjectProvider<Tracer> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(tracer);
+
         controller = new BalanceReaderController(mock(LedgerReader.class),
             verifier, new SimpleMeterRegistry(), cache, ROUTING, "test",
-            tracer);
+            provider);
     }
 
     @Test
@@ -126,5 +131,21 @@ class SpanAttributesTest {
 
         org.junit.jupiter.api.Assertions.assertEquals(250L,
             controller.getBalance("Bearer abc", ACCOUNT).getBody());
+    }
+
+    @Test
+    @DisplayName("Without a Tracer bean the controller still reads balances")
+    void noTracerBean() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<Tracer> empty = mock(ObjectProvider.class);
+        when(empty.getIfAvailable()).thenReturn(null);
+        BalanceCache config = new BalanceCache();
+        ReflectionTestUtils.setField(config, "dbRepo", repo);
+        BalanceReaderController plain = new BalanceReaderController(
+            mock(LedgerReader.class), verifier, new SimpleMeterRegistry(),
+            config.initializeCache(1000, ROUTING), ROUTING, "test", empty);
+
+        org.junit.jupiter.api.Assertions.assertEquals(250L,
+            plain.getBalance("Bearer abc", ACCOUNT).getBody());
     }
 }

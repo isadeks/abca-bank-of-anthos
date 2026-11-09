@@ -28,6 +28,7 @@ import io.micrometer.tracing.Tracer;
 import java.util.concurrent.ExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -97,8 +98,10 @@ public final class BalanceReaderController {
         LoadingCache<String, Long> cache,
         @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
         @Value("${VERSION}") final String version,
-        Tracer tracer) {
-        this.tracer = tracer;
+        ObjectProvider<Tracer> tracerProvider) {
+        // The tracer is optional: contexts without tracing still work.
+        this.tracer = tracerProvider == null
+            ? null : tracerProvider.getIfAvailable();
         this.localRoutingNum = localRoutingNum;
         // Initialize JWT verifier.
         this.verifier = verifier;
