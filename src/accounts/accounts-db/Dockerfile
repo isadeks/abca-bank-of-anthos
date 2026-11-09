@@ -16,4 +16,10 @@ FROM postgres:16.15-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0
 
 # Files for initializing the database.
 COPY initdb/0-accounts-schema.sql initdb/1-load-testdata.sh /docker-entrypoint-initdb.d/
-RUN chmod 755 /docker-entrypoint-initdb.d/0-accounts-schema.sql /docker-entrypoint-initdb.d/1-load-testdata.sh 
+# The init scripts must be readable and executable by the postgres user they now run as.
+RUN chmod 755 /docker-entrypoint-initdb.d/0-accounts-schema.sql /docker-entrypoint-initdb.d/1-load-testdata.sh
+
+# Run as the unprivileged postgres user (uid/gid 70), not root. The numeric id lets Kubernetes
+# verify runAsNonRoot. With a read-only root filesystem, mount writable volumes at
+# /var/lib/postgresql/data, /var/run/postgresql and /tmp.
+USER 70:70

@@ -19,4 +19,11 @@ RUN apk add --no-cache coreutils && rm -rf /var/cache/apk/*
 
 # Files for initializing the database.
 COPY initdb/0_init_tables.sql initdb/1_create_transactions.sh /docker-entrypoint-initdb.d/
-RUN chmod 755  /docker-entrypoint-initdb.d/0_init_tables.sql /docker-entrypoint-initdb.d/1_create_transactions.sh
+# The init scripts must be readable and executable by the postgres user they now run as.
+RUN chmod 755 /docker-entrypoint-initdb.d/0_init_tables.sql /docker-entrypoint-initdb.d/1_create_transactions.sh
+
+# Run as the unprivileged postgres user (uid/gid 70), not root. The coreutils install above
+# needs root, so the switch comes last. The numeric id lets Kubernetes verify runAsNonRoot.
+# With a read-only root filesystem, mount writable volumes at /var/lib/postgresql/data,
+# /var/run/postgresql and /tmp.
+USER 70:70
