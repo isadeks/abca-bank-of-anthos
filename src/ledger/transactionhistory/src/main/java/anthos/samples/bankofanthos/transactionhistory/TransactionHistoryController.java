@@ -26,6 +26,7 @@ import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,9 @@ public final class TransactionHistoryController {
 
     private static final Logger LOGGER =
         LogManager.getLogger(TransactionHistoryController.class);
+
+    // account ids are numeric
+    private static final Pattern ACCOUNT_ID_REGEX = Pattern.compile("^[0-9]+$");
 
     @Autowired
     private TransactionRepository dbRepo;
@@ -161,12 +165,20 @@ public final class TransactionHistoryController {
      * The currently authenticated user must be allowed to access the account.
      * @param bearerToken  HTTP request 'Authorization' header
      * @param accountId    the account to get transactions for.
-     * @return             a list of transactions for this account.
+     * @return             a list of transactions for this account, or
+     *                     HTTP 400 if the account id is not numeric.
      */
     @GetMapping("/transactions/{accountId}")
     public ResponseEntity<?> getTransactions(
             @RequestHeader("Authorization") String bearerToken,
             @PathVariable String accountId) {
+
+        if (!ACCOUNT_ID_REGEX.matcher(accountId).matches()) {
+            LOGGER.error("Failed to retrieve account transactions: "
+                + "invalid account id");
+            return new ResponseEntity<>("invalid account id",
+                                              HttpStatus.BAD_REQUEST);
+        }
 
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
             bearerToken = bearerToken.split("Bearer ")[1];
