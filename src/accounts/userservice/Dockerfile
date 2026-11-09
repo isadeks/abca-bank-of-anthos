@@ -14,9 +14,9 @@
 
 # Use the official Python docker container, slim version, running Debian
 FROM python:3.14.7-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS base
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 FROM base AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # Set working directory
 WORKDIR /app
@@ -50,7 +50,14 @@ RUN chmod a+r *
 
 # Run as a fixed non-root user (uid/gid 1000, matching the manifests' runAsUser/runAsGroup).
 # The code and virtualenv are only read at runtime; writable paths are the mounted /tmp.
-RUN groupadd --gid 1000 app && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app
+# The same layer applies the Debian security updates published since the base image was built
+# (perl, openssl, glibc, zlib, ...) and drops perl-base, which Python does not need at runtime.
+# apt and its package lists are not needed once the image is built.
+RUN apt-get update \
+    && apt-get -y --no-install-recommends upgrade \
+    && groupadd --gid 1000 app && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app \
+    && dpkg --purge --force-remove-essential --force-depends perl-base \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER 1000:1000
 
 # Start server using gunicorn
