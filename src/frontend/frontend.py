@@ -311,6 +311,8 @@ def create_app():
         try:
             # get account id from token
             account_id = decode_token(token)['acct']
+            # validate the amount before anything is sent (e.g. a new contact)
+            amount_cents = _amount_to_cents(request.form['amount'])
             if request.form['account'] == 'add':
                 external_account_num = request.form['external_account_num']
                 external_routing_num = request.form['external_routing_num']
@@ -332,7 +334,7 @@ def create_app():
                                 "fromRoutingNum": external_routing_num,
                                 "toAccountNum": account_id,
                                 "toRoutingNum": app.config['LOCAL_ROUTING'],
-                                "amount": int(Decimal(request.form['amount']) * 100),
+                                "amount": amount_cents,
                                 "uuid": request.form['uuid']}
             _submit_transaction(transaction_data)
             app.logger.info('Deposit submitted successfully.')
@@ -358,6 +360,22 @@ def create_app():
             return _transaction_failed(
                 token, 'Deposit',
                 f'{request.form.get("amount", "")} is not a valid number')
+
+    def _amount_to_cents(user_input):
+        """Convert a decimal amount string to an integer number of cents.
+
+        Raises UserWarning if the amount has more than two decimal places,
+        rather than silently rounding or truncating it.
+        Raises ValueError / DecimalException if it is not a number.
+        """
+        amount = Decimal(user_input)
+        if not amount.is_finite():
+            raise ValueError('amount is not finite')
+        if amount != amount.quantize(Decimal('0.01')):
+            raise UserWarning(
+                f'{user_input} has more than two decimal places; '
+                'enter an amount with at most two decimal places')
+        return int(amount * 100)
 
     def _submit_transaction(transaction_data):
         app.logger.debug('Submitting transaction.')
