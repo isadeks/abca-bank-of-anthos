@@ -24,6 +24,7 @@ import os
 import socket
 from decimal import Decimal, DecimalException
 from time import sleep
+from uuid import UUID, uuid5
 
 import requests
 from requests.exceptions import HTTPError, RequestException
@@ -49,6 +50,23 @@ from traced_thread_pool_executor import TracedThreadPoolExecutor
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+
+MIN_SPLIT_CONTACTS = 2
+MAX_SPLIT_CONTACTS = 4
+
+
+def split_amount(total_cents, count):
+    """
+    Split a total (in cents) into `count` shares.
+
+    Every share is the equal share rounded down to the cent, except the last
+    one which takes the remainder, so the shares always add up to the total.
+    """
+    base = total_cents // count
+    shares = [base] * (count - 1)
+    shares.append(total_cents - base * (count - 1))
+    return shares
+
 
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
@@ -261,6 +279,116 @@ def create_app():
                                 msg='Payment failed',
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
+
+    def _build_split_plan(token):
+        """
+        Validate the split-a-bill form and work out each contact's share.
+
+        Returns: a list of {'account_num', 'label', 'amount'} (amount in cents)
+        Raise: UserWarning with a message for the user if the input is invalid.
+        """
+        selected = list(dict.fromkeys(request.form.getlist('contacts')))
+        if not MIN_SPLIT_CONTACTS <= len(selected) <= MAX_SPLIT_CONTACTS:
+            raise UserWarning('pick {} to {} contacts'.format(MIN_SPLIT_CONTACTS,
+                                                              MAX_SPLIT_CONTACTS))
+        try:
+            cents = Decimal(request.form['amount']) * 100
+            if not cents.is_finite() or cents != cents.to_integral_value():
+                raise ValueError
+            total_cents = int(cents)
+        except (KeyError, ValueError, DecimalException) as err:
+            raise UserWarning('the amount is not a valid number') from err
+        if total_cents < len(selected):
+            raise UserWarning('the amount is too small to split')
+
+        # Only the user's own local (non-external) contacts can receive a share
+        hed = {'Authorization': 'Bearer ' + token}
+        url = '{}/{}'.format(app.config["CONTACTS_URI"], decode_token(token)['user'])
+        resp = requests.get(url=url, headers=hed, timeout=app.config['BACKEND_TIMEOUT'])
+        resp.raise_for_status()
+        labels = {c['account_num']: c.get('label') for c in resp.json()
+                  if not c.get('is_external')}
+        if any(acct not in labels for acct in selected):
+            raise UserWarning('unknown contact')
+        if decode_token(token)['acct'] in selected:
+            raise UserWarning('cannot split a bill with yourself')
+
+        shares = split_amount(total_cents, len(selected))
+        return [{'account_num': acct, 'label': labels[acct], 'amount': share}
+                for acct, share in zip(selected, shares)]
+
+    @app.route('/split/preview', methods=['POST'])
+    def split_preview():
+        """
+        Returns the summary of a bill split (who gets which share) as JSON,
+        without sending anything.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error previewing split: user is not authenticated.')
+            return abort(401)
+        try:
+            plan = _build_split_plan(token)
+        except UserWarning as warn:
+            return jsonify({'error': str(warn)}), 400
+        except (requests.exceptions.RequestException, ValueError) as err:
+            app.logger.error('Error previewing split: %s', str(err))
+            return jsonify({'error': 'could not load your contacts'}), 502
+        return jsonify({'total': sum(p['amount'] for p in plan),
+                        'shares': plan})
+
+    @app.route('/split', methods=['POST'])
+    def split():
+        """
+        Splits a bill between 2 to 4 contacts: sends each of them an equal
+        share, the last share absorbing the rounding so the total is exact.
+
+        Fails if:
+        - token is not valid
+        - fewer than 2 or more than 4 (local) contacts are picked
+        - the amount is not valid
+        - ledgerwriter rejects a payment (earlier shares stay sent)
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error splitting bill: user is not authenticated.')
+            return abort(401)
+
+        def to_home(msg):
+            return redirect(code=303,
+                            location=url_for('home',
+                                             msg=msg,
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+        try:
+            account_id = decode_token(token)['acct']
+            plan = _build_split_plan(token)
+            request_uuid = UUID(request.form['uuid'])
+        except UserWarning as warn:
+            app.logger.error('Error splitting bill: %s', str(warn))
+            return to_home('Split failed: {}'.format(str(warn)))
+        except (requests.exceptions.RequestException, ValueError, KeyError) as err:
+            app.logger.error('Error splitting bill: %s', str(err))
+            return to_home('Split failed')
+
+        sent = 0
+        for share in plan:
+            transaction_data = {"fromAccountNum": account_id,
+                                "fromRoutingNum": app.config['LOCAL_ROUTING'],
+                                "toAccountNum": share['account_num'],
+                                "toRoutingNum": app.config['LOCAL_ROUTING'],
+                                "amount": share['amount'],
+                                # one stable uuid per share keeps a retry from paying twice
+                                "uuid": str(uuid5(request_uuid, share['account_num']))}
+            try:
+                _submit_transaction(transaction_data)
+            except (requests.exceptions.RequestException, UserWarning) as err:
+                app.logger.error('Error splitting bill: %s', str(err))
+                return to_home('Split failed after paying {} of {} contacts'.format(
+                    sent, len(plan)))
+            sent += 1
+        app.logger.info('Bill split successfully.')
+        return to_home('Bill split between {} contacts'.format(len(plan)))
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
