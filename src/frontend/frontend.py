@@ -129,6 +129,8 @@ def create_app():
         display_name = token_data['name']
         username = token_data['user']
         account_id = token_data['acct']
+        name_parts = (display_name or '').split()
+        first_name = name_parts[0] if name_parts else ''
 
         hed = {'Authorization': 'Bearer ' + token}
 
@@ -181,6 +183,7 @@ def create_app():
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
+                               first_name=first_name,
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
                                message=message,
