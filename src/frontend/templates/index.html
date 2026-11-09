@@ -25,7 +25,7 @@ limitations under the License.
     <main class="container">
       <!-- Alert on load -->
     {% if message != None %}
-      <div class="row col-lg-12 align-items-start" id="alert-message-div" >
+      <div class="row col-lg-12 align-items-start" id="alert-message-div" role="{{ 'alert' if 'fail' in message|lower or 'error' in message|lower else 'status' }}" aria-atomic="true">
         <div class="col-lg">
             <div class="card snackbar-card">
               <div class="card-body snackbar-body">
@@ -33,13 +33,13 @@ limitations under the License.
                   <div class="col">
                     <h5 id="alert-message" class="alert-message-container">
                       <div class="check-mark-container">
-                        <span class="snackbar-close material-icons">check_circle</span>
+                        <span class="snackbar-close material-icons" aria-hidden="true">check_circle</span>
                       </div>
                       {{ message }}
                     </h5>
                   </div>
                   <div class="button-icon col-auto">
-                    <span class="snackbar-close material-icons" onclick="$('#alert-message-div').remove();">close</span>
+                    <button type="button" class="snackbar-close snackbar-dismiss" aria-label="Dismiss message" onclick="$('#alert-message-div').remove();"><span class="material-icons" aria-hidden="true">close</span></button>
                   </div>
                 </div>
               </div>
@@ -57,7 +57,7 @@ limitations under the License.
 
         <div class="col-md-4 account-info text-right">
             <p>
-              <span class="account-overview account-icon material-icons">info</span>
+              <span class="account-overview account-icon material-icons" aria-hidden="true">info</span>
               <span class="account-num-text">Account Number:</span><span class="account-number">{{ account_id }}</span>
             </p>
         </div>
@@ -84,7 +84,7 @@ limitations under the License.
 
       <!-- Buttons -->
       <div class="col-lg-4 deposit-send-payment-div">
-        <div class="card card-button deposit-send-button" data-toggle="modal" data-target="#depositFunds" data-keyboard="false" data-backdrop="static">
+        <div class="card card-button deposit-send-button" data-toggle="modal" data-target="#depositFunds" data-keyboard="true" data-backdrop="static" role="button" tabindex="0" aria-haspopup="dialog">
           <div class="card-body">
             <div class="row align-items-start">
               <div class="col">
@@ -93,14 +93,14 @@ limitations under the License.
                 </span>
               </div>
               <div class="button-icon col-auto">
-                <span class="material-icons" id="deposit-icon">get_app</span>
+                <span class="material-icons" id="deposit-icon" aria-hidden="true">get_app</span>
               </div>
             </div>
           </div>
         </div>
       </div>
       <div class="col-lg-4 deposit-send-payment-div">
-        <div class="card card-button deposit-send-button" data-toggle="modal" data-target="#sendPayment" data-keyboard="false" data-backdrop="static">
+        <div class="card card-button deposit-send-button" data-toggle="modal" data-target="#sendPayment" data-keyboard="true" data-backdrop="static" role="button" tabindex="0" aria-haspopup="dialog">
           <div class="card-body">
             <div class="row align-items-start">
               <div class="col">
@@ -109,7 +109,7 @@ limitations under the License.
                 </span>
               </div>
               <div class="button-icon col-auto">
-                <span class="material-icons" id="payment-icon">forward</span>
+                <span class="material-icons" id="payment-icon" aria-hidden="true">forward</span>
               </div>
             </div>
           </div>
@@ -207,13 +207,13 @@ limitations under the License.
       </div>
 
       <!-- Deposit Modal -->
-      <div class="modal fade" id="depositFunds" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal fade" id="depositFunds" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="deposit-modal-title" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered" role="document">
           <div class="modal-content">
             <form id="deposit-form" class="needs-validation" novalidate="" method="POST" action="/deposit">
               <div class="modal-header">
-                <h3 class="modal-title header-title" id="exampleModalLongTitle">Make a Deposit</h3>
-                <button type="button" class="close deposit-cancel" data-dismiss="modal" aria-label="Close">
+                <h3 class="modal-title header-title" id="deposit-modal-title">Make a Deposit</h3>
+                <button type="button" class="close deposit-cancel" data-dismiss="modal" aria-label="Close dialog">
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>
@@ -233,13 +233,14 @@ limitations under the License.
                         <option value="add">New External Account</option>
                       </select>
                       <div id="otherDepositInputs" class="hidden">
-                        <div id="alertBanner" class="alert alert-danger mt-3 mb-3" role="alert">
-                          <span class="error-icon mr-2 material-icons">error</span><strong>Warning</strong>: This website is a simulation. Please don't include real personal information.
+                        <div id="deposit-simulation-warning" class="alert alert-danger mt-3 mb-3" role="note">
+                          <span class="error-icon mr-2 material-icons" aria-hidden="true">error</span><strong>Warning</strong>: This website is a simulation. Please don't include real personal information.
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
-                            <span class="input-group-text"><strong class="modal-icon">#</strong></span>
+                            <span class="input-group-text"><strong class="modal-icon" aria-hidden="true">#</strong></span>
                           </div>
+                          <label class="sr-only" for="external_account_num">External account number (10 digits)</label>
                           <input class="form-control" type="number" step='1' id="external_account_num" name="external_account_num" min=1000000000 max=9999999999  placeholder="Account Number"/>
                           <div class="invalid-feedback">
                             Please enter a valid 10 digit account number.
@@ -247,8 +248,9 @@ limitations under the License.
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
-                            <span class="input-group-text"><span class="modal-icon material-icons">account_balance</span></span>
+                            <span class="input-group-text"><span class="modal-icon material-icons" aria-hidden="true">account_balance</span></span>
                           </div>
+                          <label class="sr-only" for="external_routing_num">Routing number (9 digits)</label>
                           <input class="form-control" type="number" step='1' id="external_routing_num" name="external_routing_num" min=100000000 max=999999999  placeholder="Routing Number"/>
                           <div class="invalid-feedback">
                             Please enter a valid 9 digit routing number.
@@ -256,8 +258,9 @@ limitations under the License.
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
-                            <span class="input-group-text"><span class="modal-icon material-icons">label</span></span>
+                            <span class="input-group-text"><span class="modal-icon material-icons" aria-hidden="true">label</span></span>
                           </div>
+                          <label class="sr-only" for="external_label">Account label (optional)</label>
                           <input class="form-control"  type="text" id="external_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" name="external_label" placeholder="Account Label (Optional)"/>
                           <div class="invalid-feedback">
                             Invalid label.
@@ -269,9 +272,9 @@ limitations under the License.
                       <label class="text-uppercase text-muted secondary-text mb-1" for="deposit-amount">Deposit Amount</label>
                       <div class="input-group mb-3">
                         <div class="input-group-prepend mr-2">
-                          <span class="input-group-text"><span class="amount-font material-icons money-icon">attach_money</span></span>
+                          <span class="input-group-text"><span class="amount-font material-icons money-icon" aria-hidden="true">attach_money</span></span>
                         </div>
-                        <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="deposit-amount" name="amount" placeholder="0.00" min="0.01" max="500000.00" required>
+                        <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="deposit-amount" name="amount" aria-required="true" placeholder="0.00" min="0.01" max="500000.00" required>
                         <div class="invalid-feedback">
                           Please enter a valid amount.
                         </div>
@@ -296,13 +299,13 @@ limitations under the License.
       </div>
 
       <!-- Send Modal -->
-      <div class="modal fade" id="sendPayment" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal fade" id="sendPayment" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="payment-modal-title" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered" role="document">
           <div class="modal-content">
             <form id="payment-form" class="needs-validation" novalidate="" method="POST" action="/payment">
               <div class="modal-header">
-                <h3 class="modal-title header-title" id="exampleModalLongTitle">Send a Payment</h3>
-                <button type="button" class="close payment-cancel" data-dismiss="modal" aria-label="Close">
+                <h3 class="modal-title header-title" id="payment-modal-title">Send a Payment</h3>
+                <button type="button" class="close payment-cancel" data-dismiss="modal" aria-label="Close dialog">
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>
@@ -323,8 +326,9 @@ limitations under the License.
                     <div id="otherAccountInputs" class="hidden">
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">
-                          <span class="input-group-text"><strong class="modal-icon">#</strong></span>
+                          <span class="input-group-text"><strong class="modal-icon" aria-hidden="true">#</strong></span>
                         </div>
+                        <label class="sr-only" for="contact_account_num">Recipient account number (10 digits)</label>
                         <input class="form-control" type="number" step='1' id="contact_account_num" name="contact_account_num" min=1000000000 max=9999999999  placeholder="Account Number"/>
                         <div class="invalid-feedback">
                           Please enter a valid 10 digit account number.
@@ -332,8 +336,9 @@ limitations under the License.
                       </div>
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">
-                          <span class="input-group-text"><span class="modal-icon material-icons">label</span></span>
+                          <span class="input-group-text"><span class="modal-icon material-icons" aria-hidden="true">label</span></span>
                         </div>
+                        <label class="sr-only" for="contact_label">Contact label (optional)</label>
                         <input class="form-control"  type="text" id="contact_label" name="contact_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" placeholder="Contact Label (Optional)"/>
                         <div class="invalid-feedback">
                             Invalid label.
@@ -345,9 +350,9 @@ limitations under the License.
                     <label class="text-uppercase text-muted secondary-text mb-3" for="payment-amount">Transaction Amount</label>
                     <div class="input-group mb-3">
                       <div class="input-group-prepend mr-2">
-                        <span class="input-group-text"><span class="amount-font material-icons">attach_money</span></span>
+                        <span class="input-group-text"><span class="amount-font material-icons" aria-hidden="true">attach_money</span></span>
                       </div>
-                      <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="payment-amount" name="amount" placeholder="0.00" min="0.01" max="{{ balance / 100 if balance is not none }}" required>
+                      <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="payment-amount" name="amount" aria-required="true" placeholder="0.00" min="0.01" max="{{ balance / 100 if balance is not none }}" required>
                       <div class="invalid-feedback">
                         Please enter a valid amount.
                       </div>
@@ -374,6 +379,7 @@ limitations under the License.
 {% include 'shared/footer.html' %}
 {% include 'shared/scripts.html' %}
     <!-- Page specific-->
+    <script src="static/scripts/a11y.js"></script>
     <script src="static/scripts/index.js"></script>
   </body>
 </html>

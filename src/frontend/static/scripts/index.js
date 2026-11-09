@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     if(!depositForm.checkValidity() || document.querySelector("#deposit-amount").value <= 0.00){
       e.preventDefault();
       e.stopPropagation();
+      A11y.reportInvalid(depositForm);
     }
     depositForm.classList.add("was-validated");
   });
@@ -34,6 +35,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     depositCancel.addEventListener("click", function () {
       depositForm.reset();
       depositForm.classList.remove("was-validated");
+      A11y.clearFieldErrors(depositForm);
       RefreshModals();
     });
   });
@@ -47,6 +49,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     if(!paymentForm.checkValidity() || document.querySelector("#payment-amount").value <= 0.00){
       e.preventDefault();
       e.stopPropagation();
+      A11y.reportInvalid(paymentForm);
     }
     paymentForm.classList.add("was-validated");
   });
@@ -56,9 +59,25 @@ document.addEventListener("DOMContentLoaded", function(event) {
     paymentCancel.addEventListener("click", function () {
       paymentForm.reset();
       paymentForm.classList.remove("was-validated");
+      A11y.clearFieldErrors(paymentForm);
       RefreshModals();
     });
   });
+
+  // Modal dialogs: focus management, focus trap and keyboard-operable openers
+  [["#depositFunds", depositForm], ["#sendPayment", paymentForm]].forEach(function (pair) {
+    var modal = document.querySelector(pair[0]);
+    var form = pair[1];
+    A11y.setupModal(modal);
+    // Closing the dialog by any means (Cancel, close button, Escape) starts the form afresh
+    window.jQuery(modal).on("hidden.bs.modal", function () {
+      form.reset();
+      form.classList.remove("was-validated");
+      A11y.clearFieldErrors(form);
+      RefreshModals();
+    });
+  });
+  document.querySelectorAll(".card-button[data-toggle='modal']").forEach(A11y.makeButton);
 
   // Handle new account option in Send Payment modal
   document.querySelector("#payment-accounts").addEventListener("change", function(e) {

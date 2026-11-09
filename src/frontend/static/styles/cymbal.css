@@ -290,7 +290,7 @@ bottom: 10px;
 }
 
 .invalid-feedback {
-  color: #FF0000;
+  color: #C80000; /* 4.5:1+ contrast on white (WCAG 1.4.3) */
   font-size: 1.05rem;
 }
 
@@ -444,7 +444,7 @@ input {
 
   /* Signup "danger" alert, eg. passwords don't match */
   .alert-danger {
-    background-color: #FF0000 !important;
+    background-color: #C80000 !important; /* white text needs 4.5:1 (WCAG 1.4.3) */
     color: white !important;
   }
 
@@ -467,3 +467,16 @@ input {
       align-items: center;
       margin-right: 15px;
     }
+
+/* ACCESSIBILITY: visible keyboard focus (WCAG 2.4.7) */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+.card-button:focus-visible, .close:focus-visible, .snackbar-close:focus-visible {
+  outline: 3px solid #0B57D0 !important;
+  outline-offset: 2px !important;
+}
+
+/* The dismiss control of the status snackbar is a real button */
+.snackbar-dismiss {
+  padding: 0;
+  line-height: 1;
+}

@@ -29,9 +29,9 @@ limitations under the License.
         {% if message != None and message != 'Login Failed' %}
         <div class="col-md-8 offset-md-2">
           <div class="alert alert-info alert-dismissible fade show" role="alert">
-            <span class="error-icon mr-2 material-icons">error</span>{{ message }}
+            <span class="error-icon mr-2 material-icons" aria-hidden="true">error</span>{{ message }}
             <button type="button" class="close btn-primary" data-dismiss="alert" aria-label="Close">
-              <span aria-hidden="true">×</span>
+              <span aria-hidden="true">&times;</span>
             </button>
           </div>
         </div>
@@ -47,31 +47,33 @@ limitations under the License.
             <div class="card-body sign-in">
               <div class="row align-items-center mt-2">
                 <div class="col-10 offset-1 mb-4">
-                  <div id="alertBanner" class="alert alert-danger mb-4 hidden" role="alert">
-                    <span class="error-icon mr-2 material-icons">error</span>Login failed.
+                  <div id="login-alert-region" role="alert" aria-atomic="true">
+                    <div id="alertBanner" class="alert alert-danger mb-4 hidden">
+                      <span class="error-icon mr-2 material-icons" aria-hidden="true">error</span>Login failed.
+                    </div>
                   </div>
                   {% if response_type == "code" %}
                   <form id="login-form" class="needs-validation" novalidate="" method="POST" action="/login?response_type={{ response_type }}&state={{ state }}&redirect_uri={{ redirect_uri }}&app_name={{ app_name }}">
                   {% else %}
                   <form id="login-form" class="needs-validation" novalidate="" method="POST" action="/login">
                   {% endif %}
-                    <label class="text-uppercase text-muted secondary-text" for="username">Username</label>
+                    <label class="text-uppercase text-muted secondary-text" for="login-username">Username</label>
                     <div class="input-group mt-2d mb-5">
                       <div class="input-group-prepend mr-2">
-                        <span class="input-group-text"><span class="material-icons">account_circle</span></span>
+                        <span class="input-group-text"><span class="material-icons" aria-hidden="true">account_circle</span></span>
                       </div>
-                      <input class="form-control" type="text" id="login-username" name="username" autocomplete="off" pattern="([a-zA-Z0-9_]){2,15}" value="{{ default_user }}" required>
-                      <div class="invalid-feedback">
+                      <input class="form-control" type="text" id="login-username" name="username" autocomplete="username" aria-required="true" pattern="([a-zA-Z0-9_]){2,15}" value="{{ default_user }}" required>
+                      <div class="invalid-feedback" id="login-username-error">
                         Please enter your username.
                       </div>
                     </div>
-                    <label class="text-uppercase text-muted secondary-text" for="password">Password</label>
+                    <label class="text-uppercase text-muted secondary-text" for="login-password">Password</label>
                     <div class="input-group mt-2 mb-5">
                       <div class="input-group-prepend mr-2">
-                        <span class="input-group-text"><span class="material-icons">lock</span></span>
+                        <span class="input-group-text"><span class="material-icons" aria-hidden="true">lock</span></span>
                       </div>
-                      <input class="form-control" type="password" id="login-password" name="password" value="{{ default_password }}" required>
-                      <div class="invalid-feedback">
+                      <input class="form-control" type="password" id="login-password" name="password" autocomplete="current-password" aria-required="true" value="{{ default_password }}" required>
+                      <div class="invalid-feedback" id="login-password-error">
                         Please enter your password.
                       </div>
                     </div>
@@ -91,6 +93,7 @@ limitations under the License.
 {% include 'shared/footer.html' %}
 {% include 'shared/scripts.html' %}
     <!-- Page specific-->
+    <script src="static/scripts/a11y.js"></script>
     <script src="static/scripts/login.js"></script>
   </body>
 </html>
