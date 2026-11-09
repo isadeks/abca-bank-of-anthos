@@ -15,6 +15,14 @@
  */
  
 document.addEventListener("DOMContentLoaded", function(event) {
+  // Greet the user by first name, using the time of day in their browser
+  var greeting = document.querySelector("#greeting");
+  if (greeting) {
+    var hour = new Date().getHours();
+    var salutation = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening");
+    greeting.textContent = salutation + ", " + greeting.dataset.firstName;
+  }
+
   // Deposit modal client-side validation
   var depositForm = document.querySelector("#deposit-form");
   depositForm.addEventListener("submit", function(e) {
