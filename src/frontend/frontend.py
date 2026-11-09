@@ -50,6 +50,7 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+RECENT_ACCOUNTS_LIMIT = 3
 
 
 class TransactionError(UserWarning):
@@ -189,7 +190,17 @@ def create_app():
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
-                               pod_zone=pod_zone), status
+                               pod_zone=pod_zone,
+                               recent_payees=_recent_accounts(
+                                   account_id,
+                                   api_response[TRANSACTION_LIST_NAME],
+                                   api_response[CONTACTS_NAME],
+                                   outgoing=True),
+                               recent_depositors=_recent_accounts(
+                                   account_id,
+                                   api_response[TRANSACTION_LIST_NAME],
+                                   api_response[CONTACTS_NAME],
+                                   outgoing=False)), status
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -231,6 +242,49 @@ def create_app():
                 trans['accountLabel'] = contact_map.get(trans['fromAccountNum'])
             elif trans['fromAccountNum'] == account_id:
                 trans['accountLabel'] = contact_map.get(trans['toAccountNum'])
+
+    def _recent_accounts(account_id, transactions, contacts, outgoing,
+                         limit=RECENT_ACCOUNTS_LIMIT):
+        """
+        Returns the most recent distinct counterparties of the user's transactions,
+        newest first, to offer as quick picks in the payment and deposit forms.
+
+        Params: account_id - the account id of the user
+                transactions - the transaction list, newest first (may be None)
+                contacts - the user's contacts (may be None)
+                outgoing - True for the accounts the user paid (local accounts),
+                           False for the external accounts the user received
+                           money from
+                limit - the maximum number of accounts returned
+
+        Returns: a list of {'account_num', 'routing_num', 'label'} dicts
+        """
+        if not account_id or not transactions:
+            return []
+        labels = {c.get('account_num'): c.get('label') for c in contacts or []}
+        local_routing = app.config['LOCAL_ROUTING']
+        recent = []
+        seen = set()
+        for trans in transactions:
+            if outgoing and trans.get('fromAccountNum') == account_id:
+                num = trans.get('toAccountNum')
+                routing = trans.get('toRoutingNum')
+                is_candidate = routing == local_routing
+            elif not outgoing and trans.get('toAccountNum') == account_id:
+                num = trans.get('fromAccountNum')
+                routing = trans.get('fromRoutingNum')
+                is_candidate = routing != local_routing
+            else:
+                continue
+            if not is_candidate or not num or num == account_id or num in seen:
+                continue
+            seen.add(num)
+            recent.append({'account_num': num,
+                           'routing_num': routing,
+                           'label': labels.get(num)})
+            if len(recent) >= limit:
+                break
+        return recent
 
     @app.route('/payment', methods=['POST'])
     def payment():

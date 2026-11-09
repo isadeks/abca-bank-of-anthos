@@ -71,6 +71,43 @@ document.addEventListener("DOMContentLoaded", function(event) {
   });
 
 
+  // Quick-pick chips with the most recent payees / external accounts
+  document.querySelectorAll(".recent-chip").forEach((chip) => {
+    chip.addEventListener("click", function () {
+      var accountNum = chip.dataset.accountNum;
+      var routingNum = chip.dataset.routingNum;
+      var select, options;
+      if (chip.dataset.target == "payment") {
+        select = document.querySelector("#payment-accounts");
+        var known = Array.from(select.options).find((o) => o.value == accountNum);
+        if (known) {
+          select.value = known.value;
+        } else {
+          select.value = "add";
+          document.querySelector("#contact_account_num").value = accountNum;
+        }
+      } else {
+        select = document.querySelector("#accounts");
+        var knownDeposit = Array.from(select.options).find((o) => {
+          try {
+            var details = JSON.parse(o.value);
+            return details.account_num == accountNum && details.routing_num == routingNum;
+          } catch (err) {
+            return false;
+          }
+        });
+        if (knownDeposit) {
+          select.value = knownDeposit.value;
+        } else {
+          select.value = "add";
+          document.querySelector("#external_account_num").value = accountNum;
+          document.querySelector("#external_routing_num").value = routingNum;
+        }
+      }
+      RefreshModals();
+    });
+  });
+
   function uuidv4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
