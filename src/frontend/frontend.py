@@ -44,6 +44,7 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 # Local imports
 from api_call import ApiCall, ApiRequest
 from traced_thread_pool_executor import TracedThreadPoolExecutor
+from trace_logging import add_trace_context
 
 # Local constants
 BALANCE_NAME = "balance"
@@ -754,6 +755,9 @@ def create_app():
     # Set up logging
     app.logger.handlers = logging.getLogger('gunicorn.error').handlers
     app.logger.setLevel(logging.getLogger('gunicorn.error').level)
+    # Put the trace id and span id on every line, for the app logger and for the
+    # database helpers that log through it (they share gunicorn's handlers)
+    add_trace_context(logging.getLogger('gunicorn.error'), app.logger)
     app.logger.info('Starting frontend service.')
 
     # Set up tracing and export spans over OTLP to the OpenTelemetry collector.
