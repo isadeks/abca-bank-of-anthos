@@ -20,6 +20,12 @@ const password = defaultUser.password
 const externalAccount = defaultUser.externalAccounts[0]
 const [alice, bob, eve] = defaultUser.recipients
 
+// Tick a contact the way a user does: by clicking its label
+const pickContact = (contact) => {
+    cy.get('#splitBill').contains('label', contact.accountNum).click()
+    cy.get(`input.split-contact[value="${contact.accountNum}"]`).should('be.checked')
+}
+
 describe('Split a bill', function () {
     before(function () {
         // make sure there is money in the account
@@ -42,7 +48,7 @@ describe('Split a bill', function () {
 
     it('needs 2 to 4 contacts', function () {
         cy.get('#splitSpan').click()
-        cy.get(`input.split-contact[value="${alice.accountNum}"]`).check({ force: true })
+        pickContact(alice)
         cy.get('#split-amount').type('10.00')
         cy.get('#split-review').click()
         cy.get('#split-error').should('be.visible').contains('Pick 2 to 4 contacts')
@@ -50,12 +56,11 @@ describe('Split a bill', function () {
 
     it('shows a summary with the last share absorbing the rounding, then sends it', function () {
         cy.get('#splitSpan').click()
-        ;[alice, bob, eve].forEach((contact) => {
-            cy.get(`input.split-contact[value="${contact.accountNum}"]`).check({ force: true })
-        })
+        ;[alice, bob, eve].forEach(pickContact)
         cy.get('#split-amount').type('10.01')
         cy.get('#split-review').click()
 
+        cy.get('#split-error').should('not.be.visible')
         cy.get('#split-summary-rows tr').should('have.length', 3)
         cy.get('#split-summary-rows tr').eq(0).contains('$3.33')
         cy.get('#split-summary-rows tr').eq(1).contains('$3.33')
