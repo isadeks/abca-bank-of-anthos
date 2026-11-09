@@ -747,6 +747,20 @@ def create_app():
     except (RequestException, HTTPError) as err:
         app.logger.warning("Unable to retrieve zone from metadata server %s.", metadata_server)
 
+    @app.context_processor
+    def inject_build_info():
+        """Makes the app version and environment name available to every
+        template (shown in the page footer).
+        """
+        return {
+            'app_version': os.environ.get('VERSION') or 'unknown',
+            # ENVIRONMENT_NAME can override; otherwise the Kubernetes
+            # namespace ('boa' in production, 'pr-<N>' for a preview)
+            'environment_name': (os.environ.get('ENVIRONMENT_NAME')
+                                 or os.environ.get('K8S_NAMESPACE_NAME')
+                                 or 'local'),
+        }
+
     # register formater functions
     app.jinja_env.globals.update(format_currency=format_currency)
     app.jinja_env.globals.update(format_timestamp_month=format_timestamp_month)

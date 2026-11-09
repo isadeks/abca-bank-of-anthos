@@ -7,6 +7,11 @@
                 <b>Cluster: </b>{{ cluster_name }}, <b>Pod: </b>{{ pod_name }}<b>, Zone: </b>{{ pod_zone }}
               </small>
             </div>
+            <div class="row mb-3" id="app-build-info">
+              <small>
+                <b>Version: </b><span id="app-version">{{ app_version }}</span>, <b>Environment: </b><span id="app-environment">{{ environment_name }}</span>
+              </small>
+            </div>
             <div class="row mb-3">
               <small>
                 This website is hosted for demo purposes only. It is not an
