@@ -50,6 +50,7 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+HISTORY_PAGE_SIZE = 10
 
 
 class TransactionError(UserWarning):
@@ -171,8 +172,15 @@ def create_app():
                     api_call = future_to_api_call[future]
                     api_response[api_call.display_name] = future.result().json()
 
+        history = api_response[TRANSACTION_LIST_NAME]
+        has_more = False
+        if history is not None:
+            # Show only the most recent page; the rest loads on demand
+            has_more = len(history) > HISTORY_PAGE_SIZE
+            history = history[:HISTORY_PAGE_SIZE]
+
         _populate_contact_labels(account_id,
-                                 api_response[TRANSACTION_LIST_NAME],
+                                 history,
                                  api_response[CONTACTS_NAME])
 
         return render_template('index.html',
@@ -182,7 +190,9 @@ def create_app():
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               history=api_response[TRANSACTION_LIST_NAME],
+                               history=history,
+                               history_has_more=has_more,
+                               history_page_size=HISTORY_PAGE_SIZE,
                                message=message,
                                message_is_error=is_error,
                                name=display_name,
@@ -190,6 +200,60 @@ def create_app():
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
                                pod_zone=pod_zone), status
+
+    @app.route("/history")
+    def history_page():
+        """
+        Returns one more page of the transaction history as table rows (JSON).
+
+        Query params: offset - number of (most recent) transactions already shown
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error loading history: user is not authenticated.')
+            return abort(401)
+        try:
+            offset = int(request.args.get('offset', HISTORY_PAGE_SIZE))
+        except ValueError:
+            return abort(400)
+        if offset < 0:
+            return abort(400)
+
+        token_data = decode_token(token)
+        account_id = token_data['acct']
+        hed = {'Authorization': 'Bearer ' + token}
+        timeout = app.config['BACKEND_TIMEOUT']
+        history_call = ApiCall(
+            display_name=TRANSACTION_LIST_NAME,
+            api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
+                                   headers=hed, timeout=timeout),
+            logger=app.logger)
+        contacts_call = ApiCall(
+            display_name=CONTACTS_NAME,
+            api_request=ApiRequest(
+                url=f'{app.config["CONTACTS_URI"]}/{token_data["user"]}',
+                headers=hed, timeout=timeout),
+            logger=app.logger)
+
+        tracer = trace.get_tracer(__name__)
+        with TracedThreadPoolExecutor(tracer, max_workers=2) as executor:
+            history_future = executor.submit(history_call.make_call)
+            contacts_future = executor.submit(contacts_call.make_call)
+            history_resp = history_future.result()
+            contacts_resp = contacts_future.result()
+        if not history_resp:
+            return jsonify({'error': 'Could not load transactions'}), 502
+
+        transactions = history_resp.json()
+        contacts = contacts_resp.json() if contacts_resp else []
+        page = transactions[offset:offset + HISTORY_PAGE_SIZE]
+        _populate_contact_labels(account_id, page, contacts)
+        html = render_template('shared/transaction_rows.html',
+                               history=page, account_id=account_id)
+        next_offset = offset + len(page)
+        return jsonify({'html': html,
+                        'next_offset': next_offset,
+                        'has_more': next_offset < len(transactions)})
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """

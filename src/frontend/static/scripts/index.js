@@ -98,4 +98,31 @@ document.addEventListener("DOMContentLoaded", function(event) {
       document.querySelector("#deposit-uuid").value = uuidv4();
   }
   RefreshModals();
+
+  // Transaction history: load the next page of rows on demand
+  var loadMore = document.querySelector("#load-more-transactions");
+  if (loadMore) {
+    loadMore.addEventListener("click", function() {
+      var errorMsg = document.querySelector("#load-more-error");
+      errorMsg.classList.add("hidden");
+      loadMore.disabled = true;
+      fetch("/history?offset=" + encodeURIComponent(loadMore.dataset.offset), {
+        credentials: "same-origin"
+      }).then(function(resp) {
+        if (!resp.ok) { throw new Error("HTTP " + resp.status); }
+        return resp.json();
+      }).then(function(page) {
+        document.querySelector("#transaction-list").insertAdjacentHTML("beforeend", page.html);
+        loadMore.dataset.offset = page.next_offset;
+        if (page.has_more) {
+          loadMore.disabled = false;
+        } else {
+          loadMore.parentElement.remove();
+        }
+      }).catch(function() {
+        errorMsg.classList.remove("hidden");
+        loadMore.disabled = false;
+      });
+    });
+  }
 });

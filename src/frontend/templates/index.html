@@ -156,50 +156,15 @@ limitations under the License.
                   </tr>
                 </thead>
                 <tbody class="list" id="transaction-list">
-                {% for t in history %}
-                  <tr>
-                    <td class="text-uppercase transaction-date">
-                      <p>{{ format_timestamp_month(t.timestamp) }} {{ format_timestamp_day(t.timestamp) }}</p>
-                    </td>
-                    {% if t.toAccountNum == account_id %}
-                      <td class="transaction-type">
-                        <span class="text-debit">●</span> Credit
-                      </td>
-                      <td class="transaction-account">
-                        {{ t.fromAccountNum }}
-                      </td>
-                      <td class="transaction-label">
-                        {% if t.accountLabel != None %}
-                          {{ t.accountLabel }}
-                        {% else %}
-                          <span class="transaction-label-none">None</span>
-                        {% endif %}
-                      </td>
-                      <td class="transaction-amount transaction-amount-credit">
-                        +{{ format_currency(t.amount) }}
-                      </td>
-                    {% elif t.fromAccountNum == account_id %}
-                      <td class="transaction-type">
-                        <span class="text-credit">●</span> Debit
-                      </td>
-                      <td class="transaction-account">
-                        {{ t.toAccountNum }}
-                      </td>
-                      <td class="transaction-label">
-                        {% if t.accountLabel != None %}
-                          {{ t.accountLabel }}
-                        {% else %}
-                          <span class="transaction-label-none">None</span>
-                        {% endif %}
-                      </td>
-                      <td class="transaction-amount transaction-amount-debit">
-                        -{{ format_currency(t.amount) }}
-                      </td>
-                    {% endif %}
-                  </tr>
-                {% endfor %}
+{% include 'shared/transaction_rows.html' %}
                 </tbody>
               </table>
+              {% if history_has_more %}
+              <div class="text-center my-3">
+                <button type="button" class="btn btn-secondary" id="load-more-transactions" data-offset="{{ history|length }}">Load more</button>
+                <p class="text-danger hidden" id="load-more-error" role="alert">Could not load more transactions. Please try again.</p>
+              </div>
+              {% endif %}
             {% endif %}
             </div>
           </div>
