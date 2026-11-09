@@ -24,8 +24,22 @@ import re
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-MANIFESTS = ROOT / "kubernetes-manifests"
+HERE = Path(__file__).resolve()
+SERVICE_DIR = HERE.parents[1]
+
+
+def find_root():
+    """The repository root (the directory holding kubernetes-manifests/ and
+    src/), or None when the tests run from a copy of this service alone."""
+    for parent in HERE.parents:
+        if (parent / "kubernetes-manifests").is_dir() and (parent / "src").is_dir():
+            return parent
+    return None
+
+
+ROOT = find_root()
+MANIFESTS = ROOT / "kubernetes-manifests" if ROOT else None
+needs_repo = unittest.skipIf(ROOT is None, "run from a copy of the frontend alone, not the whole repository")
 
 # service -> (image definition, manifest, deployment name)
 PYTHON_SERVICES = {
@@ -54,27 +68,30 @@ def block(lines, start):
     return out
 
 
-def parse_manifest(name):
+def parse_manifest_text(text):
     """Pod-level securityContext, container securityContext and volume info of
-    the single Deployment in a manifest."""
-    text = (MANIFESTS / name).read_text()
+    the single Deployment in a manifest (indentation-agnostic: the pod-level
+    securityContext is the shallower of the two)."""
     deployment = next(d for d in text.split("\n---") if re.search(r"^kind: Deployment$", d, re.M))
     lines = deployment.splitlines()
-    pod, container, mounts, volumes = None, None, None, None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        indent = len(line) - len(line.lstrip())
-        if stripped == "securityContext:" and indent == 6:
-            pod = block(lines, i)
-        elif stripped == "securityContext:" and indent == 10:
-            container = block(lines, i)
-        elif stripped == "volumeMounts:" and indent == 10:
-            mounts = block(lines, i)
-        elif stripped == "volumes:" and indent == 6:
-            volumes = block(lines, i)
+
+    def indent_of(line):
+        return len(line) - len(line.lstrip())
+
+    contexts = [i for i, line in enumerate(lines) if line.strip() == "securityContext:"]
+    assert len(contexts) == 2, "expected a pod and a container securityContext"
+    pod, container = sorted(contexts, key=lambda i: indent_of(lines[i]))
+    pod, container = block(lines, pod), block(lines, container)
+    mounts = next((block(lines, i) for i, l in enumerate(lines) if l.strip() == "volumeMounts:"), None)
+    volumes = next((block(lines, i) for i, l in enumerate(lines) if l.strip() == "volumes:"), None)
     return pod, container, mounts, volumes
 
 
+def parse_manifest(name):
+    return parse_manifest_text((MANIFESTS / name).read_text())
+
+
+@needs_repo
 class ImageDefinitionTest(unittest.TestCase):
     def test_python_dockerfiles_declare_a_non_root_user(self):
         for service, (path, _) in PYTHON_SERVICES.items():
@@ -102,6 +119,7 @@ class ImageDefinitionTest(unittest.TestCase):
                 self.assertRegex(jib, r"<container>[\s\S]*<user>1000:1000</user>[\s\S]*</container>")
 
 
+@needs_repo
 class ManifestTest(unittest.TestCase):
     def test_pod_runs_as_non_root_uid_1000(self):
         for service, (_, manifest) in ALL_SERVICES.items():
@@ -149,6 +167,27 @@ class ManifestTest(unittest.TestCase):
             "config.yaml", "accounts-db.yaml", "ledger-db.yaml"}
         covered = {manifest for _, manifest in ALL_SERVICES.values()}
         self.assertEqual(app_manifests, covered)
+
+
+class FrontendOwnFilesTest(unittest.TestCase):
+    """The frontend's own image and development manifest, which are part of the
+    service directory and so are checked wherever these tests run."""
+
+    def test_dockerfile_runs_as_uid_gid_1000(self):
+        dockerfile = (SERVICE_DIR / "Dockerfile").read_text()
+        self.assertEqual(re.findall(r"^USER\s+(\S+)\s*$", dockerfile, re.M)[-1], "1000:1000")
+        self.assertRegex(dockerfile, r"groupadd\s+--gid\s+1000")
+        self.assertRegex(dockerfile, r"useradd\s+--uid\s+1000\s+--gid\s+1000")
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", dockerfile)
+
+    def test_dev_manifest_is_non_root_with_read_only_root_filesystem(self):
+        pod, container, _, _ = parse_manifest_text((SERVICE_DIR / "k8s/base/frontend.yaml").read_text())
+        for expected in ("runAsNonRoot: true", "runAsUser: 1000", "runAsGroup: 1000"):
+            self.assertIn(expected, pod)
+        self.assertIn("readOnlyRootFilesystem: true", container)
+        # /tmp is the only writable path, added by the add-tmp-dir component
+        kustomization = (SERVICE_DIR / "k8s/base/kustomization.yaml").read_text()
+        self.assertIn("components/add-tmp-dir", kustomization)
 
 
 if __name__ == "__main__":
