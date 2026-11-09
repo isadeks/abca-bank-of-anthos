@@ -94,6 +94,13 @@ class HistoryPaginationTest(unittest.TestCase):
         self.assertIn('id="load-more-transactions"', html)
         self.assertIn('data-next-offset="10"', html)
 
+    def test_load_more_outside_transaction_table(self):
+        """#transaction-table only contains the table (e2e checks its children)"""
+        self.backend(make_transactions(25))
+        html = self.client.get('/home').get_data(as_text=True)
+        between = html[html.index('</table>'):html.index('load-more-container')]
+        self.assertIn('</div>', between)
+
     def test_home_most_recent_first(self):
         """The rows shown are the first (most recent) ones"""
         self.backend(make_transactions(25))

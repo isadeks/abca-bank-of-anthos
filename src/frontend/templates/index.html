@@ -159,14 +159,14 @@ limitations under the License.
                 {% include 'shared/transaction_rows.html' %}
                 </tbody>
               </table>
-              {% if has_more_history %}
-              <div class="text-center py-3" id="load-more-container">
-                <button type="button" class="btn btn-primary" id="load-more-transactions"
-                        data-next-offset="{{ history|length }}">Load more</button>
-              </div>
-              {% endif %}
             {% endif %}
             </div>
+            {% if has_more_history %}
+            <div class="text-center py-3" id="load-more-container">
+              <button type="button" class="btn btn-primary" id="load-more-transactions"
+                      data-next-offset="{{ history|length }}">Load more</button>
+            </div>
+            {% endif %}
           </div>
         </div>
       </div>
