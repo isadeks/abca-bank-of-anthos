@@ -23,9 +23,12 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import java.util.concurrent.ExecutionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -45,6 +48,11 @@ public final class BalanceReaderController {
     private static final Logger LOGGER =
         LogManager.getLogger(BalanceReaderController.class);
 
+    /** Span attribute: routing number of the account. */
+    static final String ROUTING_NUM_TAG = "balance.routing_num";
+    /** Span attribute: whether the balance came from the cache. */
+    static final String CACHE_HIT_TAG = "balance.cache_hit";
+
     @Autowired
     private TransactionRepository dbRepo;
 
@@ -54,11 +62,34 @@ public final class BalanceReaderController {
     private JWTVerifier verifier;
     private LoadingCache<String, Long> cache;
     private LedgerReader ledgerReader;
+    private Tracer tracer;
+
+    /**
+     * Constructor without tracing: no span attributes are recorded.
+     *
+     * @param reader          ledger reader
+     * @param verifier        JWT verifier
+     * @param meterRegistry   metrics registry
+     * @param cache           balance cache
+     * @param localRoutingNum routing number of this bank
+     * @param version         service version
+     */
+    public BalanceReaderController(LedgerReader reader,
+        JWTVerifier verifier,
+        MeterRegistry meterRegistry,
+        LoadingCache<String, Long> cache,
+        final String localRoutingNum,
+        final String version) {
+        this(reader, verifier, meterRegistry, cache, localRoutingNum,
+            version, null);
+    }
 
     /**
      * Constructor.
      *
      * Initializes JWT verifier and a connection to the bank ledger.
+     * The tracer is used to tag balance reads with the routing number and
+     * whether the balance came from the cache.
      */
     @Autowired
     public BalanceReaderController(LedgerReader reader,
@@ -66,7 +97,12 @@ public final class BalanceReaderController {
         MeterRegistry meterRegistry,
         LoadingCache<String, Long> cache,
         @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
-        @Value("${VERSION}") final String version) {
+        @Value("${VERSION}") final String version,
+        ObjectProvider<Tracer> tracerProvider) {
+        // The tracer is optional: contexts without tracing still work.
+        this.tracer = tracerProvider == null
+            ? null : tracerProvider.getIfAvailable();
+        this.localRoutingNum = localRoutingNum;
         // Initialize JWT verifier.
         this.verifier = verifier;
         LOGGER.debug("Initialized JWT verifier");
@@ -161,6 +197,10 @@ public final class BalanceReaderController {
                 return new ResponseEntity<>("not authorized",
                     HttpStatus.UNAUTHORIZED);
             }
+            // containsKey does not touch the cache statistics.
+            boolean cacheHit = cache.asMap() != null
+                && cache.asMap().containsKey(accountId);
+            tagSpan(cacheHit);
             // Load from cache
             Long balance = cache.get(accountId);
             return new ResponseEntity<Long>(balance, HttpStatus.OK);
@@ -173,5 +213,23 @@ public final class BalanceReaderController {
             return new ResponseEntity<>("cache error",
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * Tags the current span with the routing number and cache-hit flag.
+     * The account number is deliberately not recorded.
+     *
+     * @param cacheHit  whether the balance is served from the cache
+     */
+    private void tagSpan(final boolean cacheHit) {
+        if (tracer == null) {
+            return;
+        }
+        Span span = tracer.currentSpan();
+        if (span == null) {
+            return;
+        }
+        span.tag(ROUTING_NUM_TAG, String.valueOf(localRoutingNum));
+        span.tag(CACHE_HIT_TAG, cacheHit);
     }
 }
