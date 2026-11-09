@@ -35,10 +35,33 @@ public interface TransactionRepository
     @Query("SELECT MAX(transactionId) FROM Transaction")
     Long latestTransactionId();
 
-    @Query("SELECT t FROM Transaction t "
-        + " WHERE (t.fromAccountNum=?1 AND t.fromRoutingNum=?2) "
-        + "   OR (t.toAccountNum=?1 AND t.toRoutingNum=?2) "
-        + " ORDER BY t.timestamp DESC")
+    /**
+     * Returns the newest transactions of an account, newest first.
+     *
+     * Written as the union of two index-ordered, limited scans instead of
+     * one query with an OR condition. With the OR, Postgres has to fetch and
+     * sort every transaction of the account before it can apply the page
+     * size, which is slow for accounts with many transactions. Each branch
+     * below walks the (ACCT, ROUTE, TIMESTAMP) index of the ledger from the
+     * newest entry and stops after the page, so the cost depends on the page
+     * size and not on the size of the account. The parameters are cast to
+     * the CHAR type of the columns so that the index can be used.
+     * UNION (not UNION ALL) keeps a transfer to oneself from showing twice.
+     */
+    @Query(value = "SELECT * FROM ("
+        + " (SELECT * FROM TRANSACTIONS "
+        + "   WHERE FROM_ACCT = CAST(?1 AS CHAR(10)) "
+        + "     AND FROM_ROUTE = CAST(?2 AS CHAR(9)) "
+        + "   ORDER BY TIMESTAMP DESC "
+        + "   LIMIT ?#{[2].offset + [2].pageSize}) "
+        + " UNION "
+        + " (SELECT * FROM TRANSACTIONS "
+        + "   WHERE TO_ACCT = CAST(?1 AS CHAR(10)) "
+        + "     AND TO_ROUTE = CAST(?2 AS CHAR(9)) "
+        + "   ORDER BY TIMESTAMP DESC "
+        + "   LIMIT ?#{[2].offset + [2].pageSize}) "
+        + ") history ORDER BY TIMESTAMP DESC",
+        nativeQuery = true)
     LinkedList<Transaction> findForAccount(String accountNum,
                                            String routingNum,
                                            Pageable pager);
