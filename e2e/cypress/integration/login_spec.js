@@ -58,7 +58,8 @@ describe('Default Credentials on Form Submission', function() {
 
   it('sees transaction history', function() {
     cy.get('#transaction-table').children().should('have.class', 'table')
-    cy.get('#transaction-list').children().should('have.length.greaterThan', 10)
+    // DEM-262: the home page shows the 10 most recent transactions; the rest load on demand
+    cy.get('#transaction-list').children().should('have.length', 10)
 
   })
 
