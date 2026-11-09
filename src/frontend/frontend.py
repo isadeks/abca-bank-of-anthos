@@ -50,6 +50,7 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+SPENDING_NAME = "spending"
 
 
 class TransactionError(UserWarning):
@@ -150,15 +151,22 @@ def create_app():
                     api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get monthly spending by counterparty
+            ApiCall(display_name=SPENDING_NAME,
+                    api_request=ApiRequest(url=f'{app.config["SPENDING_URI"]}/{account_id}',
+                                           headers=hed,
+                                           timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger)
         ]
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
-                        CONTACTS_NAME: []}
+                        CONTACTS_NAME: [],
+                        SPENDING_NAME: None}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=len(api_calls)) as executor:
             futures = []
 
             future_to_api_call = {
@@ -169,6 +177,14 @@ def create_app():
             for future in concurrent.futures.as_completed(future_to_api_call):
                 if future.result():
                     api_call = future_to_api_call[future]
+                    if api_call.display_name == SPENDING_NAME:
+                        # spending is optional: a bad body must not break the page
+                        try:
+                            api_response[SPENDING_NAME] = future.result().json()
+                        except ValueError as err:
+                            app.logger.error('Error getting %s: %s',
+                                             SPENDING_NAME, str(err))
+                        continue
                     api_response[api_call.display_name] = future.result().json()
 
         _populate_contact_labels(account_id,
@@ -189,7 +205,65 @@ def create_app():
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
-                               pod_zone=pod_zone), status
+                               pod_zone=pod_zone,
+                               spending=_spending_view(api_response[SPENDING_NAME],
+                                                       api_response[CONTACTS_NAME])), status
+
+    def _spending_view(spending, contacts):
+        """
+        Builds what the home page shows for the monthly spending summary.
+
+        Params: spending - the history service's JSON, newest month first:
+                        [{"month": "2026-11",
+                          "counterparties": [{"counterpartyAccountNum": "...",
+                                              "counterpartyRoutingNum": "...",
+                                              "totalCents": 1250}]}, ...]
+                        or None if the call failed
+                contacts - a list of contacts as key/value dicts
+
+        Returns: None if the summary is unavailable (failed call or malformed
+                 body), otherwise a list of {'month': 'November 2026',
+                 'rows': [{'label': ..., 'total_cents': ...}]}, one entry per
+                 month with spending. The list is empty if nothing was spent.
+                 A row's label is its contact's label, otherwise
+                 'account ending in ####' (the last 4 digits).
+        """
+        if not isinstance(spending, list):
+            return None
+        labels = {}
+        for contact in contacts or []:
+            if contact.get('label'):
+                labels[(contact.get('account_num'),
+                        contact.get('routing_num'))] = contact['label']
+        months = []
+        try:
+            for entry in spending:
+                rows = []
+                for cp in entry['counterparties']:
+                    account = str(cp['counterpartyAccountNum'])
+                    routing = cp.get('counterpartyRoutingNum')
+                    label = labels.get((account, routing))
+                    if label is None:
+                        # contacts saved without a routing number match on account only
+                        label = labels.get((account, None))
+                    if label is None:
+                        label = f'account ending in {account[-4:]}'
+                    rows.append({'label': label,
+                                 'total_cents': int(cp['totalCents'])})
+                if rows:
+                    months.append({'month': _month_name(entry['month']),
+                                   'rows': rows})
+        except (KeyError, TypeError, ValueError, AttributeError) as err:
+            app.logger.error('Error reading %s: %s', SPENDING_NAME, str(err))
+            return None
+        return months
+
+    def _month_name(month):
+        """ '2026-11' -> 'November 2026'; anything else is returned as is """
+        try:
+            return datetime.datetime.strptime(month, '%Y-%m').strftime('%B %Y')
+        except (TypeError, ValueError):
+            return str(month)
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -719,6 +793,8 @@ def create_app():
     app.config["BALANCES_URI"] = 'http://{}/balances'.format(
         os.environ.get('BALANCES_API_ADDR'))
     app.config["HISTORY_URI"] = 'http://{}/transactions'.format(
+        os.environ.get('HISTORY_API_ADDR'))
+    app.config["SPENDING_URI"] = 'http://{}/spending'.format(
         os.environ.get('HISTORY_API_ADDR'))
     app.config["LOGIN_URI"] = 'http://{}/login'.format(
         os.environ.get('USERSERVICE_API_ADDR'))
