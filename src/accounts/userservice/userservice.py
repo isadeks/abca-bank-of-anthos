@@ -38,6 +38,7 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 from db import UserDb
+from trace_logging import add_trace_context
 
 def create_app():
     """Flask application factory to create instances
@@ -219,6 +220,9 @@ def create_app():
     # Set up logger
     app.logger.handlers = logging.getLogger('gunicorn.error').handlers
     app.logger.setLevel(logging.getLogger('gunicorn.error').level)
+    # Put the trace id and span id on every line, for the app logger and for the
+    # database helpers that log through it (they share gunicorn's handlers)
+    add_trace_context(logging.getLogger('gunicorn.error'), app.logger)
     app.logger.info('Starting userservice.')
 
     # Set up tracing and export spans over OTLP to the OpenTelemetry collector.
