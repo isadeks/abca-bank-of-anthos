@@ -35,6 +35,11 @@ Implemented in Python with Locust.
 - `LOG_LEVEL`
   - The [logging level](https://docs.python.org/3/library/logging.html#levels) (default: INFO)
 
+### Health Probes
+
+The load test runs with Locust's web interface on port `8089` (started automatically with `--autostart`).
+The Kubernetes liveness and readiness probes request `/` on that port, so a load generator that stops answering is restarted.
+
 ### Kubernetes Resources
 
 - [deployments/loadgenerator](/kubernetes-manifests/loadgenerator.yaml)

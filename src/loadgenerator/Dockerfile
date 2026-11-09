@@ -53,5 +53,9 @@ ENV LOG_LEVEL=info
 RUN groupadd --gid 1000 app && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app
 USER 1000:1000
 
+# Locust's web interface answers the Kubernetes liveness/readiness probes.
+# --autostart runs the load test immediately (like --headless) without waiting for a click.
+EXPOSE 8089
+
 # start loadgenerator
-ENTRYPOINT locust --host="http://${FRONTEND_ADDR}" --loglevel $LOG_LEVEL --headless --users="${USERS:-10}" 2>&1
+ENTRYPOINT locust --host="http://${FRONTEND_ADDR}" --loglevel $LOG_LEVEL --autostart --users="${USERS:-10}" --web-port 8089 2>&1
