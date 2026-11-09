@@ -49,6 +49,8 @@ from traced_thread_pool_executor import TracedThreadPoolExecutor
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+# Number of transactions shown on the home page, and added per "Load more"
+HISTORY_PAGE_SIZE = 10
 
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
@@ -155,6 +157,14 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        # Only show the most recent page of transactions; the rest is
+        # fetched on demand through /history.
+        history = api_response[TRANSACTION_LIST_NAME]
+        has_more_history = False
+        if history is not None:
+            has_more_history = len(history) > HISTORY_PAGE_SIZE
+            history = history[:HISTORY_PAGE_SIZE]
+
         return render_template('index.html',
                                account_id=account_id,
                                balance=api_response[BALANCE_NAME],
@@ -162,13 +172,74 @@ def create_app():
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               history=api_response[TRANSACTION_LIST_NAME],
+                               has_more_history=has_more_history,
+                               history=history,
                                message=request.args.get('msg', None),
                                name=display_name,
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
                                pod_zone=pod_zone)
+
+    @app.route("/history")
+    def history_page():
+        """
+        Returns the next page of the transaction history as JSON:
+        {"html": <table rows>, "next_offset": int, "has_more": bool}
+
+        Query params:
+        - offset: number of (most recent) transactions already shown, default 0
+
+        Fails if the token is not valid (401), the offset is not a
+        non-negative integer (400) or the history cannot be loaded (502).
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return abort(401)
+        try:
+            offset = int(request.args.get('offset', '0'))
+        except ValueError:
+            return abort(400)
+        if offset < 0:
+            return abort(400)
+
+        token_data = decode_token(token)
+        account_id = token_data['acct']
+        hed = {'Authorization': 'Bearer ' + token}
+        timeout = app.config['BACKEND_TIMEOUT']
+        history_call = ApiCall(
+            display_name=TRANSACTION_LIST_NAME,
+            api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
+                                   headers=hed, timeout=timeout),
+            logger=app.logger)
+        contacts_call = ApiCall(
+            display_name=CONTACTS_NAME,
+            api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{token_data["user"]}',
+                                   headers=hed, timeout=timeout),
+            logger=app.logger)
+
+        tracer = trace.get_tracer(__name__)
+        with TracedThreadPoolExecutor(tracer, max_workers=2) as executor:
+            history_future = executor.submit(history_call.make_call)
+            contacts_future = executor.submit(contacts_call.make_call)
+            history_response = history_future.result()
+            contacts_response = contacts_future.result()
+
+        if not history_response:
+            return abort(502)
+        transactions = history_response.json()
+        contacts = contacts_response.json() if contacts_response else []
+        _populate_contact_labels(account_id, transactions, contacts)
+
+        page = transactions[offset:offset + HISTORY_PAGE_SIZE]
+        next_offset = offset + len(page)
+        return jsonify({
+            'html': render_template('shared/transaction_rows.html',
+                                    account_id=account_id,
+                                    history=page),
+            'next_offset': next_offset,
+            'has_more': next_offset < len(transactions),
+        })
 
     def _populate_contact_labels(account_id, transactions, contacts):
         """

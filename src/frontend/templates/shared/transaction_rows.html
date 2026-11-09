@@ -1,0 +1,42 @@
+{% for t in history %}
+<tr>
+  <td class="text-uppercase transaction-date">
+    <p>{{ format_timestamp_month(t.timestamp) }} {{ format_timestamp_day(t.timestamp) }}</p>
+  </td>
+  {% if t.toAccountNum == account_id %}
+    <td class="transaction-type">
+      <span class="text-debit">●</span> Credit
+    </td>
+    <td class="transaction-account">
+      {{ t.fromAccountNum }}
+    </td>
+    <td class="transaction-label">
+      {% if t.accountLabel != None %}
+        {{ t.accountLabel }}
+      {% else %}
+        <span class="transaction-label-none">None</span>
+      {% endif %}
+    </td>
+    <td class="transaction-amount transaction-amount-credit">
+      +{{ format_currency(t.amount) }}
+    </td>
+  {% elif t.fromAccountNum == account_id %}
+    <td class="transaction-type">
+      <span class="text-credit">●</span> Debit
+    </td>
+    <td class="transaction-account">
+      {{ t.toAccountNum }}
+    </td>
+    <td class="transaction-label">
+      {% if t.accountLabel != None %}
+        {{ t.accountLabel }}
+      {% else %}
+        <span class="transaction-label-none">None</span>
+      {% endif %}
+    </td>
+    <td class="transaction-amount transaction-amount-debit">
+      -{{ format_currency(t.amount) }}
+    </td>
+  {% endif %}
+</tr>
+{% endfor %}
