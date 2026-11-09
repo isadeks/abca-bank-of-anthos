@@ -134,6 +134,7 @@ The following button opens up an interactive tutorial showing how to deploy Bank
 
 <!-- This section is duplicated in the docs/ README: https://github.com/GoogleCloudPlatform/bank-of-anthos/blob/main/docs/README.md -->
 
+- [Architecture](/docs/architecture.md) for the services, how a payment flows, where data lives and how telemetry flows.
 - [Development](/docs/development.md) to learn how to run and develop this app locally.
 - [Environments](/docs/environments.md) to learn how to deploy on non-GKE clusters.
 - [Workload Identity](/docs/workload-identity.md) to learn how to set-up Workload Identity.
