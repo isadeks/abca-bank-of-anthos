@@ -39,11 +39,19 @@ COPY locustfile.py .
 # show python logs as they occur
 ENV PYTHONUNBUFFERED=0
 
+# the root filesystem is read-only: do not try to write .pyc files next to the code
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # enable gevent support in debugger
 ENV GEVENT_SUPPORT=True
 
 # explicitly set a fallback log level in case no log level is defined by Kubernetes
 ENV LOG_LEVEL=info
+
+# Run as a fixed non-root user (uid/gid 1000, matching the manifests' runAsUser/runAsGroup).
+# The code and virtualenv are only read at runtime; writable paths are the mounted /tmp.
+RUN groupadd --gid 1000 app && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app
+USER 1000:1000
 
 # start loadgenerator
 ENTRYPOINT locust --host="http://${FRONTEND_ADDR}" --loglevel $LOG_LEVEL --headless --users="${USERS:-10}" 2>&1

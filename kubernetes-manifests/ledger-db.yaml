@@ -80,6 +80,14 @@ spec:
         team: ledger
         tier: db
     spec:
+      # Postgres runs as the image's postgres user (uid/gid 70); fsGroup makes the data volume writable.
+      securityContext:
+        fsGroup: 70
+        runAsGroup: 70
+        runAsNonRoot: true
+        runAsUser: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - envFrom:
             - configMapRef:
@@ -90,6 +98,11 @@ spec:
                 name: demo-data-config
           image: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/ledger-db:v0.6.11@sha256:b434822c3122bc3f4681741fc863c02f7bb2f476b0d6b307e2282b49d896c3dd
           name: postgres
+          env:
+            # A directory below the mount point, so initdb creates it (owned by postgres, mode 0700)
+            # instead of finding a root-owned subPath directory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
           resources:
@@ -99,12 +112,28 @@ spec:
             requests:
               cpu: 100m
               memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 70
+          # The root filesystem is read-only: Postgres only writes to these volumes.
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
               name: postgresdb
-              subPath: postgres
+            - mountPath: /var/run/postgresql
+              name: run
+            - mountPath: /tmp
+              name: tmp
       serviceAccount: bank-of-anthos
       serviceAccountName: default
       volumes:
         - emptyDir: {}
           name: postgresdb
+        - emptyDir: {}
+          name: run
+        - emptyDir: {}
+          name: tmp
