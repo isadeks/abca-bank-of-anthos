@@ -232,6 +232,14 @@ limitations under the License.
                         <option disabled>──────────</option>
                         <option value="add">New External Account</option>
                       </select>
+                      {% if recent_depositors %}
+                      <div class="recent-accounts mt-3" id="recent-depositors">
+                        <small class="text-uppercase text-muted secondary-text d-block mb-2">Recent</small>
+                        {% for a in recent_depositors %}
+                        <button type="button" class="recent-chip" data-target="deposit" data-account-num="{{ a.account_num }}" data-routing-num="{{ a.routing_num }}" data-label="{{ a.label or '' }}">{{ a.label or a.account_num }}</button>
+                        {% endfor %}
+                      </div>
+                      {% endif %}
                       <div id="otherDepositInputs" class="hidden">
                         <div id="alertBanner" class="alert alert-danger mt-3 mb-3" role="alert">
                           <span class="error-icon mr-2 material-icons">error</span><strong>Warning</strong>: This website is a simulation. Please don't include real personal information.
@@ -320,6 +328,14 @@ limitations under the License.
                       <option disabled>──────────</option>
                       <option value="add">New Recipient</option>
                     </select>
+                    {% if recent_payees %}
+                    <div class="recent-accounts mt-3" id="recent-payees">
+                      <small class="text-uppercase text-muted secondary-text d-block mb-2">Recent</small>
+                      {% for a in recent_payees %}
+                      <button type="button" class="recent-chip" data-target="payment" data-account-num="{{ a.account_num }}" data-routing-num="{{ a.routing_num }}" data-label="{{ a.label or '' }}">{{ a.label or a.account_num }}</button>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
                     <div id="otherAccountInputs" class="hidden">
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">

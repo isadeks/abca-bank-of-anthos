@@ -307,6 +307,19 @@ bottom: 10px;
 .hidden {
   display: none;
 }
+.recent-chip {
+  background: #fff;
+  border: 1px solid #1a73e8;
+  border-radius: 16px;
+  color: #1a73e8;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin: 0 0.5rem 0.5rem 0;
+  padding: 0.25rem 0.75rem;
+}
+.recent-chip:hover, .recent-chip:focus {
+  background: #e8f0fe;
+}
 
 
 
