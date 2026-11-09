@@ -30,6 +30,8 @@ import static anthos.samples.bankofanthos.ledgerwriter.ExceptionMessages.
         EXCEPTION_MESSAGE_SEND_TO_SELF;
 import static anthos.samples.bankofanthos.ledgerwriter.ExceptionMessages.
         EXCEPTION_MESSAGE_INVALID_AMOUNT;
+import static anthos.samples.bankofanthos.ledgerwriter.ExceptionMessages.
+        EXCEPTION_MESSAGE_INVALID_POCKET_TRANSFER;
 
 
 /**
@@ -63,6 +65,34 @@ public class TransactionValidator {
     public void validateTransaction(String localRoutingNum, String authedAcct,
                                      Transaction transaction)
             throws IllegalArgumentException {
+        validateTransaction(localRoutingNum, null, authedAcct, transaction);
+    }
+
+    /**
+     * Same checks as above, plus the rules for the Savings pocket: a second
+     * ledger account that uses the owner's account number under the reserved
+     * savings routing number.
+     *
+     *   - Only the owner can spend from their pocket
+     *   - A transaction involving the savings routing number must move money
+     *     between the owner's main account and the owner's pocket, and
+     *     nothing else
+     *
+     * @param localRoutingNum    the routing number of this bank
+     * @param savingsRoutingNum  the reserved savings pocket routing number,
+     *                           or null/empty if pockets are not configured
+     * @param authedAcct         the currently authenticated user account
+     * @param transaction        the transaction object
+     *
+     * @throws IllegalArgumentException  on validation error
+     */
+    public void validateTransaction(String localRoutingNum,
+                                     String savingsRoutingNum,
+                                     String authedAcct,
+                                     Transaction transaction)
+            throws IllegalArgumentException {
+        final boolean pocketsEnabled =
+                savingsRoutingNum != null && !savingsRoutingNum.isEmpty();
         LOGGER.debug("Validating transaction");
         final String fromAcct = transaction.getFromAccountNum();
         final String fromRoute = transaction.getFromRoutingNum();
@@ -81,12 +111,31 @@ public class TransactionValidator {
             throw new IllegalArgumentException(
                     EXCEPTION_MESSAGE_INVALID_NUMBER);
         }
-        // If this is an internal transaction,
+        // If this is an internal transaction (main account or savings pocket),
         // ensure it originated from the authenticated user.
-        if (fromRoute.equals(localRoutingNum) && !fromAcct.equals(authedAcct)) {
+        if ((fromRoute.equals(localRoutingNum)
+                || (pocketsEnabled && fromRoute.equals(savingsRoutingNum)))
+                && !fromAcct.equals(authedAcct)) {
             LOGGER.error("Invalid transaction: Sender not authorized");
             throw new IllegalArgumentException(
                     EXCEPTION_MESSAGE_NOT_AUTHENTICATED);
+        }
+        // Anything involving the savings routing number must be a transfer
+        // between the owner's main account and the owner's own pocket.
+        if (pocketsEnabled && (fromRoute.equals(savingsRoutingNum)
+                || toRoute.equals(savingsRoutingNum))) {
+            final boolean mainToPocket = fromRoute.equals(localRoutingNum)
+                    && toRoute.equals(savingsRoutingNum);
+            final boolean pocketToMain = fromRoute.equals(savingsRoutingNum)
+                    && toRoute.equals(localRoutingNum);
+            if (!(mainToPocket || pocketToMain)
+                    || !fromAcct.equals(authedAcct)
+                    || !toAcct.equals(authedAcct)) {
+                LOGGER.error("Invalid transaction: Invalid savings pocket "
+                        + "transfer");
+                throw new IllegalArgumentException(
+                        EXCEPTION_MESSAGE_INVALID_POCKET_TRANSFER);
+            }
         }
         // Ensure sender isn't receiver.
         if (fromAcct.equals(toAcct) && fromRoute.equals(toRoute)) {
