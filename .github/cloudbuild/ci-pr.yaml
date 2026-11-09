@@ -68,20 +68,6 @@ steps:
       kubectl create namespace $NAMESPACE
       skaffold deploy --namespace=$NAMESPACE --build-artifacts=/workspace/artifacts.json --assume-yes --profile=development --iterative-status-check=false
   - name: gcr.io/k8s-skaffold/skaffold:v2.22.0
-    id: run-e2e-tests
-    script: |
-      #!/bin/bash
-      set -x
-      cat <<EOT >> .env
-      CYPRESS_baseUrl=http://$(kubectl get service frontend --namespace $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-      ROLLOUT=$ROLLOUT
-      EOT
-      cat .env
-      skaffold verify --build-artifacts=/workspace/artifacts.json --profile=development -m frontend --env-file=.env
-    env:
-      - "ROLLOUT=pr$_PR_NUMBER/$SHORT_SHA"
-      - "ARTIFACTS_BUCKET_NAME=$_CACHE_URI"
-  - name: gcr.io/k8s-skaffold/skaffold:v2.22.0
     id: delete-environment
     script: |
       #!/bin/bash

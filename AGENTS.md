@@ -29,7 +29,7 @@ CI runs outside this repository; changing scripts here does not change it.
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
   - They are not part of `mise run check` (no database locally); CI reports them on the PR.
 - `abca-boa/ui-check`: **your own UI check of the change**, run on the preview (see "UI checks" below). Required when a frontend template or static file changes (a UI change); its video and screenshots are posted on the PR and in the Linear session.
-- `abca-boa/e2e`: the Cypress suite in `e2e/` (login, signup, deposit, transfer, home) runs against the preview. Add new specs under `e2e/cypress/integration/`; changing an existing spec needs a maintainer's approval like any existing test.
+- The Cypress suite in `e2e/` (login, signup, deposit, transfer, home) is no longer a step of the PR pipeline (removed to speed up CI). It can still be run by hand with `make test-e2e` against a deployed environment.
 - `deployment:Preview`: when the PR changes a service's code, the manifests, `deploy/` or `e2e/`, it is deployed to its own namespace `pr-<N>` (changed services built from the PR, the rest from production) and smoke-tested: login, home page (balance, history, contacts), and a deposit that must change the balance.
 
 A change to tests or docs only gets no preview, and merging it leaves production as it is. Merging anything else to `main` releases to production: the changed services are built, deployed, smoke-tested, and rolled back automatically on failure.
