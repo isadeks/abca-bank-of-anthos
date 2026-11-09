@@ -30,3 +30,19 @@ test('transaction history shows 10 rows and loads 10 more on demand', async ({ p
     focus: page.locator('#transaction-table'),
   });
 });
+
+test('Load more is a full-width, easy-to-tap button on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await signIn(page);
+
+  const loadMore = page.locator('#load-more-transactions');
+  await expect(loadMore).toBeVisible();
+  await loadMore.scrollIntoViewIfNeeded();
+  await highlight(page, loadMore, 'Load more');
+  await shot(page, 'On a phone, Load more spans the width of the card', { focus: loadMore });
+
+  const button = await loadMore.boundingBox();
+  const card = await page.locator('#load-more-container').boundingBox();
+  expect(button!.height).toBeGreaterThanOrEqual(44);
+  expect(button!.width).toBeGreaterThan(card!.width * 0.8);
+});

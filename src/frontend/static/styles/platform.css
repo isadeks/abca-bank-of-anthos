@@ -36,3 +36,18 @@
   justify-content: center;
   align-items: center;
 }
+
+/* Transaction history "Load more": full width, easy-to-tap button on phones */
+@media (max-width: 575.98px) {
+  #load-more-container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  #load-more-transactions {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin: 0;
+    font-size: 1rem;
+  }
+}
