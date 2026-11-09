@@ -80,6 +80,34 @@ limitations under the License.
               </div>
             </div>
         </div>
+
+      {% if pocket_enabled %}
+        <!-- Savings pocket -->
+        <div class="card" id="pocket-card">
+          <div class="card-body">
+            <div class="row align-items-start">
+              <div class="col">
+                <p class="text-uppercase mb-3">
+                  <b class="current-balance">Savings Pocket</b>
+                </p>
+                <span class="h1 mb-0" id="pocket-balance">
+                  {{ format_currency(pocket_balance) }}
+                </span>
+              </div>
+              <div class="button-icon col-auto">
+                <span class="material-icons">savings</span>
+              </div>
+            </div>
+            <form id="pocket-move-form" class="mt-3" method="POST" action="/pocket/move-back">
+              <input type="hidden" name="uuid" value="{{ pocket_move_uuid }}">
+              <button type="submit" id="pocket-move-button" class="btn btn-primary btn-with-padding"
+                {% if pocket_balance is none or pocket_balance <= 0 %}disabled title="Your Savings pocket is empty"{% endif %}>
+                Move to main account
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
       </div>
 
       <!-- Buttons -->
@@ -161,7 +189,7 @@ limitations under the License.
                     <td class="text-uppercase transaction-date">
                       <p>{{ format_timestamp_month(t.timestamp) }} {{ format_timestamp_day(t.timestamp) }}</p>
                     </td>
-                    {% if t.toAccountNum == account_id %}
+                    {% if t.toAccountNum == account_id and t.toRoutingNum != savings_routing %}
                       <td class="transaction-type">
                         <span class="text-debit">●</span> Credit
                       </td>
@@ -178,7 +206,7 @@ limitations under the License.
                       <td class="transaction-amount transaction-amount-credit">
                         +{{ format_currency(t.amount) }}
                       </td>
-                    {% elif t.fromAccountNum == account_id %}
+                    {% elif t.fromAccountNum == account_id and t.fromRoutingNum != savings_routing %}
                       <td class="transaction-type">
                         <span class="text-credit">●</span> Debit
                       </td>

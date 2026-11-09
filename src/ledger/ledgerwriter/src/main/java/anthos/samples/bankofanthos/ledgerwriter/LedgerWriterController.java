@@ -59,6 +59,7 @@ public final class LedgerWriterController {
     private JWTVerifier verifier;
 
     private String localRoutingNum;
+    private String savingsRoutingNum;
     private String balancesApiUri;
     private String version;
 
@@ -72,6 +73,24 @@ public final class LedgerWriterController {
     RestTemplate restTemplate;
 
     /**
+    * Constructor without Savings pocket support.
+    *
+    * Initializes JWT verifier.
+    */
+    public LedgerWriterController(
+            JWTVerifier verifier,
+            MeterRegistry meterRegistry,
+            TransactionRepository transactionRepository,
+            TransactionValidator transactionValidator,
+            String localRoutingNum,
+            String balancesApiUri,
+            String version) {
+        this(verifier, meterRegistry, transactionRepository,
+                transactionValidator, localRoutingNum, null,
+                balancesApiUri, version);
+    }
+
+    /**
     * Constructor.
     *
     * Initializes JWT verifier.
@@ -83,6 +102,7 @@ public final class LedgerWriterController {
             TransactionRepository transactionRepository,
             TransactionValidator transactionValidator,
             @Value("${LOCAL_ROUTING_NUM}") String localRoutingNum,
+            @Value("${SAVINGS_ROUTING_NUM:}") String savingsRoutingNum,
             @Value("http://${BALANCES_API_ADDR}/balances")
                     String balancesApiUri,
             @Value("${VERSION}") String version) {
@@ -90,6 +110,7 @@ public final class LedgerWriterController {
         this.transactionRepository = transactionRepository;
         this.transactionValidator = transactionValidator;
         this.localRoutingNum = localRoutingNum;
+        this.savingsRoutingNum = savingsRoutingNum;
         this.balancesApiUri = balancesApiUri;
         this.version = version;
         // Initialize cache to ignore duplicate transactions
@@ -153,12 +174,29 @@ public final class LedgerWriterController {
             }
 
             // validate transaction
-            transactionValidator.validateTransaction(localRoutingNum,
-                    jwt.getClaim(JWT_ACCOUNT_KEY).asString(), transaction);
+            final String authedAcct =
+                    jwt.getClaim(JWT_ACCOUNT_KEY).asString();
+            final boolean pocketsEnabled = savingsRoutingNum != null
+                    && !savingsRoutingNum.isEmpty();
+            if (pocketsEnabled) {
+                transactionValidator.validateTransaction(localRoutingNum,
+                        savingsRoutingNum, authedAcct, transaction);
+            } else {
+                transactionValidator.validateTransaction(localRoutingNum,
+                        authedAcct, transaction);
+            }
             // Ensure sender balance can cover transaction.
-            if (transaction.getFromRoutingNum().equals(localRoutingNum)) {
-                int balance = getAvailableBalance(
-                        bearerToken, transaction.getFromAccountNum());
+            final boolean fromPocket = pocketsEnabled
+                    && savingsRoutingNum.equals(
+                            transaction.getFromRoutingNum());
+            if (transaction.getFromRoutingNum().equals(localRoutingNum)
+                    || fromPocket) {
+                int balance = fromPocket
+                    ? getAvailableBalance(bearerToken,
+                            transaction.getFromAccountNum(),
+                            transaction.getFromRoutingNum())
+                    : getAvailableBalance(
+                            bearerToken, transaction.getFromAccountNum());
                 if (balance < transaction.getAmount()) {
                     LOGGER.error("Transaction submission failed: "
                         + "Insufficient balance");
@@ -206,12 +244,32 @@ public final class LedgerWriterController {
      */
     protected int getAvailableBalance(String token, String fromAcct)
             throws HttpServerErrorException {
+        return getAvailableBalance(token, fromAcct, null);
+    }
+
+    /**
+     * Retrieve the balance of the sender's account under a routing number.
+     *
+     * @param token  the token used to authenticate request
+     * @param fromAcct  sender account number
+     * @param fromRoute  sender routing number, or null for the main account
+     *
+     * @return available balance of the sender account
+     *
+     * @throws HttpServerErrorException  if balance service returns 500
+     */
+    protected int getAvailableBalance(String token, String fromAcct,
+                                      String fromRoute)
+            throws HttpServerErrorException {
         LOGGER.debug("Retrieving balance for transaction sender");
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + token);
         HttpEntity entity = new HttpEntity(headers);
         String uri = balancesApiUri + "/" + fromAcct;
+        if (fromRoute != null) {
+            uri += "?routing=" + fromRoute;
+        }
         ResponseEntity<Integer> response = restTemplate.exchange(
             uri, HttpMethod.GET, entity, Integer.class);
         Integer senderBalance = response.getBody();

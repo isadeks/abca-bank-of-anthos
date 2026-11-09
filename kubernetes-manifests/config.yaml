@@ -18,6 +18,9 @@ metadata:
   name: environment-config
 data:
   LOCAL_ROUTING_NUM: "883745000"
+  # Reserved routing number of each customer's Savings pocket: a second ledger
+  # account that uses the customer's account number under this routing number.
+  SAVINGS_ROUTING_NUM: "883745999"
   PUB_KEY_PATH: "/tmp/.ssh/publickey"
 ---
 apiVersion: v1

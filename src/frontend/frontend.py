@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import socket
+import uuid
 from decimal import Decimal, DecimalException
 from time import sleep
 
@@ -48,6 +49,7 @@ from trace_logging import add_trace_context
 
 # Local constants
 BALANCE_NAME = "balance"
+POCKET_BALANCE_NAME = "pocket_balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
 
@@ -153,12 +155,24 @@ def create_app():
                     logger=app.logger)
         ]
 
+        if app.config['SAVINGS_ROUTING']:
+            # get the Savings pocket balance: the same account number under
+            # the savings routing number
+            api_calls.append(
+                ApiCall(display_name=POCKET_BALANCE_NAME,
+                        api_request=ApiRequest(
+                            url=_pocket_balance_url(account_id),
+                            headers=hed,
+                            timeout=app.config['BACKEND_TIMEOUT']),
+                        logger=app.logger))
+
         api_response = {BALANCE_NAME: None,
+                        POCKET_BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
                         CONTACTS_NAME: []}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -188,8 +202,80 @@ def create_app():
                                name=display_name,
                                platform=platform,
                                platform_display_name=platform_display_name,
+                               pocket_balance=api_response[POCKET_BALANCE_NAME],
+                               pocket_enabled=bool(app.config['SAVINGS_ROUTING']),
+                               pocket_move_uuid=str(uuid.uuid4()),
                                pod_name=pod_name,
-                               pod_zone=pod_zone), status
+                               pod_zone=pod_zone,
+                               savings_routing=app.config['SAVINGS_ROUTING']), status
+
+    def _pocket_balance_url(account_id):
+        """URL of the Savings pocket balance of the account"""
+        return '{}/{}?routing={}'.format(app.config["BALANCES_URI"],
+                                         account_id,
+                                         app.config['SAVINGS_ROUTING'])
+
+    @app.route('/pocket/move-back', methods=['POST'])
+    def pocket_move_back():
+        """
+        Moves the whole balance of the user's Savings pocket back to the
+        main account, using the ledgerwriter transfer API.
+
+        Fails if:
+        - token is not valid
+        - Savings pockets are not configured
+        - the pocket is empty or its balance can't be read
+        - response code from ledgerwriter is not 201
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error moving savings: user is not authenticated.')
+            return abort(401)
+        kind = 'Move to main account'
+        if not app.config['SAVINGS_ROUTING']:
+            return _transaction_failed(token, kind,
+                                       'Savings pocket is not available')
+        account_id = decode_token(token)['acct']
+        hed = {'Authorization': 'Bearer ' + token}
+        response = ApiCall(
+            display_name=POCKET_BALANCE_NAME,
+            api_request=ApiRequest(url=_pocket_balance_url(account_id),
+                                   headers=hed,
+                                   timeout=app.config['BACKEND_TIMEOUT']),
+            logger=app.logger).make_call()
+        try:
+            response.raise_for_status()
+            pocket_balance = int(response.json())
+        except (AttributeError, ValueError, RequestException):
+            app.logger.error('Error moving savings: could not read the pocket balance.')
+            return _transaction_failed(
+                token, kind, 'could not read the Savings pocket balance', 502)
+        if pocket_balance <= 0:
+            return _transaction_failed(token, kind, 'your Savings pocket is empty')
+        try:
+            _submit_transaction({
+                "fromAccountNum": account_id,
+                "fromRoutingNum": app.config['SAVINGS_ROUTING'],
+                "toAccountNum": account_id,
+                "toRoutingNum": app.config['LOCAL_ROUTING'],
+                "amount": pocket_balance,
+                "uuid": request.form.get('uuid') or str(uuid.uuid4())})
+        except TransactionError as err:
+            app.logger.error('Error moving savings: %s', str(err))
+            return _transaction_failed(token, kind, str(err), err.status_code)
+        except UserWarning as warn:
+            app.logger.error('Error moving savings: %s', str(warn))
+            return _transaction_failed(token, kind, str(warn))
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error moving savings: %s', str(err))
+            return _transaction_failed(token, kind, status=502)
+        app.logger.info('Savings moved to the main account successfully.')
+        return redirect(code=303,
+                        location=url_for('home',
+                                         msg='Moved {} from Savings to your main account'
+                                         .format(format_currency(pocket_balance)),
+                                         _external=True,
+                                         _scheme=app.config['SCHEME']))
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -708,6 +794,8 @@ def create_app():
         os.environ.get('CONTACTS_API_ADDR'))
     app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
     app.config['LOCAL_ROUTING'] = os.getenv('LOCAL_ROUTING_NUM')
+    # routing number of the Savings pockets (empty: pockets are off)
+    app.config['SAVINGS_ROUTING'] = os.getenv('SAVINGS_ROUTING_NUM', '')
     # timeout in seconds for calls to the backend
     app.config['BACKEND_TIMEOUT'] = int(os.getenv('BACKEND_TIMEOUT', '4'))
     app.config['TOKEN_NAME'] = 'token'

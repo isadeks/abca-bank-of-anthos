@@ -28,11 +28,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -50,6 +52,10 @@ public final class BalanceReaderController {
 
     private String localRoutingNum;
     private String version;
+
+    // Routing number of the customers' Savings pockets, if configured.
+    @Value("${SAVINGS_ROUTING_NUM:}")
+    private String savingsRoutingNum;
 
     private JWTVerifier verifier;
     private LoadingCache<String, Long> cache;
@@ -75,6 +81,7 @@ public final class BalanceReaderController {
         GuavaCacheMetrics.monitor(meterRegistry, this.cache, "Guava");
         LOGGER.debug("Initialized cache");
         this.version = version;
+        this.localRoutingNum = localRoutingNum;
         // Initialize transaction processor.
         this.ledgerReader = reader;
         LOGGER.debug("Initialized transaction processor");
@@ -170,6 +177,65 @@ public final class BalanceReaderController {
                 HttpStatus.UNAUTHORIZED);
         } catch (ExecutionException | UncheckedExecutionException e) {
             LOGGER.error("Cache error");
+            return new ResponseEntity<>("cache error",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Return the balance of the specified account under a given routing
+     * number: the main account (the local routing number) or the account's
+     * Savings pocket (the savings routing number).
+     *
+     * The currently authenticated user must be allowed to access the account.
+     * The balance is summed from the ledger on each call, so it is never
+     * stale after a transfer.
+     *
+     * @param bearerToken  HTTP request 'Authorization' header
+     * @param accountId    the account to get the balance for
+     * @param routing      the routing number the account is held under
+     * @return             the balance of the account under that routing number
+     */
+    @GetMapping(value = "/balances/{accountId}", params = "routing")
+    public ResponseEntity<?> getBalanceForRouting(
+        @RequestHeader("Authorization") String bearerToken,
+        @PathVariable String accountId,
+        @RequestParam("routing") String routing) {
+
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            bearerToken = bearerToken.split("Bearer ")[1];
+        }
+        try {
+            DecodedJWT jwt = verifier.verify(bearerToken);
+            // Check that the authenticated user can access this account.
+            if (!accountId.equals(jwt.getClaim("acct").asString())) {
+                LOGGER.error("Failed to retrieve account balance: "
+                    + "not authorized");
+                return new ResponseEntity<>("not authorized",
+                    HttpStatus.UNAUTHORIZED);
+            }
+            if (routing.equals(localRoutingNum)) {
+                return new ResponseEntity<Long>(cache.get(accountId),
+                    HttpStatus.OK);
+            }
+            // Only the account's own savings pocket can be read this way.
+            if (savingsRoutingNum == null || savingsRoutingNum.isEmpty()
+                || !routing.equals(savingsRoutingNum)) {
+                LOGGER.error("Failed to retrieve account balance: "
+                    + "unsupported routing number");
+                return new ResponseEntity<>("unsupported routing number",
+                    HttpStatus.BAD_REQUEST);
+            }
+            Long balance = dbRepo.findBalance(accountId, routing);
+            return new ResponseEntity<Long>(balance == null ? 0L : balance,
+                HttpStatus.OK);
+        } catch (JWTVerificationException e) {
+            LOGGER.error("Failed to retrieve account balance: not authorized");
+            return new ResponseEntity<>("not authorized",
+                HttpStatus.UNAUTHORIZED);
+        } catch (ExecutionException | UncheckedExecutionException
+                 | DataAccessException e) {
+            LOGGER.error("Failed to retrieve account balance");
             return new ResponseEntity<>("cache error",
                 HttpStatus.INTERNAL_SERVER_ERROR);
         }
