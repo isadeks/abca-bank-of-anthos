@@ -40,6 +40,9 @@ from db import ContactsDb
 from trace_logging import add_trace_context
 
 
+MAX_LABEL_LENGTH = 30
+
+
 def create_app():
     """Flask application factory to create instances
     of the Contact Service Flask App
@@ -167,6 +170,10 @@ def create_app():
         if (req["is_external"] and req["routing_num"] == app.config["LOCAL_ROUTING"]):
             raise UserWarning("invalid routing number")
         # Validate label
+        # Too-long labels get their own message so the user knows what to fix
+        if isinstance(req["label"], str) and len(req["label"]) > MAX_LABEL_LENGTH:
+            raise UserWarning(
+                f"label must be {MAX_LABEL_LENGTH} characters or fewer")
         # Must be >0 and <=30 chars, alphanumeric and spaces, can't start with space
         if req["label"] is None or not re.match(r"^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$", req["label"]):
             raise UserWarning("invalid account label")

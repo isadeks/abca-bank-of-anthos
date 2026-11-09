@@ -81,6 +81,10 @@ INVALID_LABELS = [
     "label*new", # alphanumeric with non alphanumeric characters
     "🏦💸", # emojis
     "label1💸", # alphanumeric with emojis
+    ]
+
+# Labels over 30 chars are rejected with a specific "too long" message
+TOO_LONG_LABELS = [
     get_random_string(31), # 31 characters
     " {}".format(get_random_string(30)), # 30 characters + leading space
     "{} ".format(get_random_string(30)), # 30 characters + trailing space
