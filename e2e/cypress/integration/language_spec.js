@@ -51,6 +51,9 @@ describe('Language switch on the home page', function() {
     cy.get('#deposit-form').contains('Hacer un depósito')
     cy.get('#deposit-form').contains('Importe del depósito')
     cy.get('#deposit-form .deposit-cancel').click()
+    // wait for the deposit modal (and its backdrop) to close before opening the next one
+    cy.get('#depositFunds').should('not.be.visible')
+    cy.get('.modal-backdrop').should('not.exist')
     cy.get('#paymentSpan').click()
     cy.get('#payment-form').contains('Enviar un pago')
     cy.get('#payment-form').contains('Destinatario')
