@@ -71,6 +71,75 @@ document.addEventListener("DOMContentLoaded", function(event) {
   });
 
 
+  // Split a bill modal: pick contacts + total, review the summary, then send
+  var splitForm = document.querySelector("#split-form");
+  var splitError = document.querySelector("#split-error");
+
+  function formatCents(cents) {
+    return "$" + (cents / 100).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+
+  function showSplitStep(step) {
+    document.querySelector("#split-step-pick").classList.toggle("hidden", step != "pick");
+    document.querySelector("#split-step-summary").classList.toggle("hidden", step != "summary");
+  }
+
+  function showSplitError(message) {
+    splitError.textContent = message;
+    splitError.classList.remove("hidden");
+  }
+
+  function resetSplit() {
+    splitForm.reset();
+    splitError.classList.add("hidden");
+    showSplitStep("pick");
+    RefreshModals();
+  }
+
+  document.querySelector("#split-review").addEventListener("click", function() {
+    splitError.classList.add("hidden");
+    var picked = document.querySelectorAll(".split-contact:checked").length;
+    var amount = document.querySelector("#split-amount");
+    if (picked < 2 || picked > 4) {
+      showSplitError("Pick 2 to 4 contacts.");
+      return;
+    }
+    if (!amount.checkValidity() || amount.value <= 0) {
+      showSplitError("Please enter a valid amount.");
+      return;
+    }
+    // The server works out the shares, so the summary is what will be sent
+    fetch("/split/preview", {method: "POST", body: new URLSearchParams(new FormData(splitForm)), credentials: "same-origin"})
+      .then(function(resp) { return resp.json().then(function(body) { return {ok: resp.ok, body: body}; }); })
+      .then(function(result) {
+        if (!result.ok) {
+          showSplitError("Split failed: " + (result.body.error || "unknown error"));
+          return;
+        }
+        var rows = document.querySelector("#split-summary-rows");
+        rows.innerHTML = "";
+        result.body.shares.forEach(function(share) {
+          var row = rows.insertRow();
+          row.className = "split-summary-row";
+          row.insertCell().textContent = share.label + " (" + share.account_num + ")";
+          var cell = row.insertCell();
+          cell.className = "text-right";
+          cell.textContent = formatCents(share.amount);
+        });
+        document.querySelector("#split-summary-total").textContent = formatCents(result.body.total);
+        showSplitStep("summary");
+      })
+      .catch(function() { showSplitError("Split failed: could not reach the server."); });
+  });
+
+  document.querySelector("#split-back").addEventListener("click", function() {
+    showSplitStep("pick");
+  });
+
+  document.querySelectorAll(".split-cancel").forEach(function(cancel) {
+    cancel.addEventListener("click", resetSplit);
+  });
+
   function uuidv4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -96,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
       // generate new uuids
       document.querySelector("#payment-uuid").value = uuidv4();
       document.querySelector("#deposit-uuid").value = uuidv4();
+      document.querySelector("#split-uuid").value = uuidv4();
   }
   RefreshModals();
 });

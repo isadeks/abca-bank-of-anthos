@@ -116,6 +116,23 @@ limitations under the License.
         </div>
       </div>
 
+      <div class="col-lg-4 offset-lg-8 deposit-send-payment-div mt-3 mb-3">
+        <div class="card card-button deposit-send-button" id="split-open" data-toggle="modal" data-target="#splitBill" data-keyboard="false" data-backdrop="static">
+          <div class="card-body">
+            <div class="row align-items-start">
+              <div class="col">
+                <span class="h5 mb-0" id="splitSpan">
+                  Split a Bill
+                </span>
+              </div>
+              <div class="button-icon col-auto">
+                <span class="material-icons" id="split-icon">call_split</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Transaction History Table -->
       <div class="row col-lg-12 mb-4 align-items-start">
         <div class="col-lg-12">
@@ -366,6 +383,85 @@ limitations under the License.
               </div>
 
             <input type="hidden" id="payment-uuid" name="uuid">
+            </form>
+          </div>
+        </div>
+      </div>
+      <!-- Split a Bill Modal -->
+      <div class="modal fade" id="splitBill" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+          <div class="modal-content">
+            <form id="split-form" novalidate="" method="POST" action="/split">
+              <div class="modal-header">
+                <h3 class="modal-title header-title">Split a Bill</h3>
+                <button type="button" class="close split-cancel" data-dismiss="modal" aria-label="Close">
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div id="split-step-pick">
+                <div class="modal-body">
+                  <div class="row">
+                    <div class="col-md-10 offset-md-1 mb-4">
+                      <label class="text-uppercase text-muted secondary-text mb-3">Split between 2 to 4 contacts</label>
+                      <div id="split-contacts">
+                        {% for account in contacts %}
+                          {% if not account.is_external %}
+                            <div class="custom-control custom-checkbox">
+                              <input class="custom-control-input split-contact" type="checkbox" name="contacts" id="split-contact-{{ loop.index }}" value="{{ account.account_num }}" data-label="{{ account.label }}">
+                              <label class="custom-control-label" for="split-contact-{{ loop.index }}">{{ account.label }} - {{ account.account_num }}</label>
+                            </div>
+                          {% endif %}
+                        {% endfor %}
+                      </div>
+                    </div>
+                    <div class="col-md-10 offset-md-1">
+                      <label class="text-uppercase text-muted secondary-text mb-3" for="split-amount">Total Amount</label>
+                      <div class="input-group mb-3">
+                        <div class="input-group-prepend mr-2">
+                          <span class="input-group-text"><span class="amount-font material-icons">attach_money</span></span>
+                        </div>
+                        <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="split-amount" name="amount" placeholder="0.00" min="0.01" max="{{ balance / 100 if balance is not none }}" required>
+                      </div>
+                      <div id="split-error" class="alert alert-danger hidden" role="alert"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-body">
+                  <div class="row align-items-end text-right">
+                    <div class="col-md-10 offset-md-1 text-right align-items-end">
+                      <button type="button" class="btn btn-secondary split-cancel" data-dismiss="modal">Cancel</button>
+                      <button type="button" class="btn btn-primary btn-with-padding" id="split-review">Review</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div id="split-step-summary" class="hidden">
+                <div class="modal-body">
+                  <div class="row">
+                    <div class="col-md-10 offset-md-1">
+                      <label class="text-uppercase text-muted secondary-text mb-3">Summary</label>
+                      <table class="table table-sm" id="split-summary">
+                        <tbody id="split-summary-rows"></tbody>
+                        <tfoot>
+                          <tr>
+                            <th>Total</th>
+                            <th class="text-right" id="split-summary-total"></th>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-body">
+                  <div class="row align-items-end text-right">
+                    <div class="col-md-10 offset-md-1 text-right align-items-end">
+                      <button type="button" class="btn btn-secondary" id="split-back">Back</button>
+                      <button type="submit" class="btn btn-primary btn-with-padding" id="split-send">Send</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <input type="hidden" id="split-uuid" name="uuid">
             </form>
           </div>
         </div>
