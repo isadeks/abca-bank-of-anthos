@@ -17,19 +17,20 @@
 
 # Module imports
 import concurrent.futures
-import datetime
+import html
 import json
 import logging
 import os
 import socket
-from decimal import Decimal, DecimalException
+from decimal import Decimal
+from pathlib import Path
 from time import sleep
+from urllib.parse import urlencode
 
 import requests
 from requests.exceptions import HTTPError, RequestException
 import jwt
-from flask import Flask, abort, jsonify, make_response, redirect, \
-    render_template, request, url_for
+from flask import Flask, abort, jsonify, make_response, redirect, request, url_for
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -58,6 +59,47 @@ class TransactionError(UserWarning):
     def __init__(self, message, status_code=400):
         super().__init__(message)
         self.status_code = status_code
+
+
+# The React single-page app, built into static/dist by `npm run build` in web/
+SHELL_PATH = Path(__file__).resolve().parent / 'static' / 'dist' / 'index.html'
+# Where the shell puts the message that a form post wants the app to show
+FLASH_MARKER = '<!--boa-flash-->'
+# Served when the app has not been built (the unit tests, for one)
+SHELL_FALLBACK = (
+    '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+    '<title>Bank of Anthos</title></head>'
+    f'<body><div id="root">{FLASH_MARKER}</div></body></html>')
+
+
+def flash_markup(flash):
+    """
+    HTML for the message a form post wants the single-page app to show.
+
+    It carries the message as JSON for the app, which reads it when it starts,
+    and as an alert for what is on screen until the app has replaced it.
+    """
+    if not flash:
+        return ''
+    is_error = bool(flash.get('isError'))
+    data = json.dumps({'message': flash['message'], 'isError': is_error})
+    role = ' role="alert"' if is_error else ''
+    css_class = 'alert-message-container' + (' text-danger' if is_error else '')
+    return (
+        # "<" is escaped so that the message cannot close the script element
+        f'<script id="boa-flash" type="application/json">{data.replace("<", "\\u003c")}</script>'
+        f'<div class="container"><div id="alert-message-div"{role}>'
+        f'<h5 id="alert-message" class="{css_class}">{html.escape(flash["message"])}</h5>'
+        '</div></div>')
+
+
+def render_shell(flash=None):
+    """The single-page app's HTML, with the message to show when it starts"""
+    try:
+        page = SHELL_PATH.read_text(encoding='utf-8')
+    except OSError:
+        page = SHELL_FALLBACK
+    return page.replace(FLASH_MARKER, flash_markup(flash))
 
 
 # pylint: disable-msg=too-many-locals
@@ -96,7 +138,8 @@ def create_app():
     @app.route("/")
     def root():
         """
-        Renders home page or login page, depending on authentication status.
+        Serves the single-page app: the home view or the login view,
+        depending on authentication status.
         """
         token = request.cookies.get(app.config['TOKEN_NAME'])
         if not verify_token(token):
@@ -106,7 +149,7 @@ def create_app():
     @app.route("/home")
     def home():
         """
-        Renders home page. Redirects to /login if token is not valid
+        Serves the single-page app. Redirects to /login if token is not valid
         """
         token = request.cookies.get(app.config['TOKEN_NAME'])
         if not verify_token(token):
@@ -115,18 +158,47 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return _render_home(token, message=request.args.get('msg', None))
+        return _render_shell()
 
-    def _render_home(token, message=None, is_error=False, status=200):
+    def _render_shell(flash=None, status=200):
         """
-        Renders the home page for a user with a valid token.
+        Responds with the React single-page app.
 
-        Params: message - optional message shown in the alert banner
-                is_error - whether the message reports a failure
+        Params: flash - optional {'message', 'isError'} dict that the app shows
+                        in its alert banner when it starts
                 status - HTTP status code of the response
         """
+        resp = make_response(render_shell(flash), status)
+        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+
+    def _failure_message(kind, reason=None):
+        return f'{kind} failed: {reason}' if reason else f'{kind} failed'
+
+    def _transaction_failed(kind, reason=None, status=400):
+        """
+        Responds with the single-page app showing an error message
+        and a failure status.
+
+        Params: kind - 'Payment' or 'Deposit'
+                reason - optional explanation shown after the message
+                status - HTTP status code of the response
+        """
+        return _render_shell(flash={'message': _failure_message(kind, reason),
+                                    'isError': True},
+                             status=status)
+
+    def _load_home(token):
+        """
+        Fetches what the home view shows from the backend services.
+
+        A part that could not be loaded is None (balance, history) or empty
+        (contacts).
+
+        Params: token - the user's valid JWT
+        """
         token_data = decode_token(token)
-        display_name = token_data['name']
         username = token_data['user']
         account_id = token_data['acct']
 
@@ -159,8 +231,6 @@ def create_app():
 
         tracer = trace.get_tracer(__name__)
         with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
-            futures = []
-
             future_to_api_call = {
                 executor.submit(api_call.make_call):
                     api_call for api_call in api_calls
@@ -175,32 +245,11 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
-        return render_template('index.html',
-                               account_id=account_id,
-                               balance=api_response[BALANCE_NAME],
-                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
-                               cluster_name=cluster_name,
-                               contacts=api_response[CONTACTS_NAME],
-                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               history=api_response[TRANSACTION_LIST_NAME],
-                               message=message,
-                               message_is_error=is_error,
-                               name=display_name,
-                               platform=platform,
-                               platform_display_name=platform_display_name,
-                               pod_name=pod_name,
-                               pod_zone=pod_zone), status
-
-    def _transaction_failed(token, kind, reason=None, status=400):
-        """
-        Renders the home page with an error message and a failure status.
-
-        Params: kind - 'Payment' or 'Deposit'
-                reason - optional explanation shown after the message
-                status - HTTP status code of the response
-        """
-        msg = f'{kind} failed: {reason}' if reason else f'{kind} failed'
-        return _render_home(token, message=msg, is_error=True, status=status)
+        return {'account_id': account_id,
+                'name': token_data['name'],
+                'balance': api_response[BALANCE_NAME],
+                'history': api_response[TRANSACTION_LIST_NAME],
+                'contacts': api_response[CONTACTS_NAME]}
 
     def _populate_contact_labels(account_id, transactions, contacts):
         """
@@ -232,10 +281,160 @@ def create_app():
             elif trans['fromAccountNum'] == account_id:
                 trans['accountLabel'] = contact_map.get(trans['toAccountNum'])
 
+    # JSON API used by the single-page app
+
+    def _json_body():
+        """The JSON object sent by the client; empty if it sent anything else"""
+        body = request.get_json(silent=True)
+        return body if isinstance(body, dict) else {}
+
+    def _valid_token():
+        """The request's token if it is valid, otherwise None"""
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        return token if verify_token(token) else None
+
+    def _unauthorized():
+        return jsonify(error='Not authenticated'), 401
+
+    @app.route('/api/config', methods=['GET'])
+    def api_config():
+        """
+        What the single-page app needs to know about the deployment
+        """
+        return jsonify(bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                       cymbal_logo=os.getenv('CYMBAL_LOGO', 'false') == 'true',
+                       cluster_name=cluster_name,
+                       pod_name=pod_name,
+                       pod_zone=pod_zone,
+                       platform=platform,
+                       platform_display_name=platform_display_name,
+                       default_username=os.getenv('DEFAULT_USERNAME', ''),
+                       default_password=os.getenv('DEFAULT_PASSWORD', ''))
+
+    @app.route('/api/session', methods=['GET'])
+    def api_session():
+        """
+        Who is signed in. Responds 401 if token is not valid
+        """
+        token = _valid_token()
+        if token is None:
+            return _unauthorized()
+        token_data = decode_token(token)
+        return jsonify(name=token_data['name'],
+                       username=token_data['user'],
+                       account_id=token_data['acct'])
+
+    @app.route('/api/home', methods=['GET'])
+    def api_home():
+        """
+        Balance, transaction history and contacts of the signed in user.
+        Responds 401 if token is not valid
+        """
+        token = _valid_token()
+        if token is None:
+            return _unauthorized()
+        return jsonify(_load_home(token))
+
+    def _make_payment(data):
+        """
+        Submits a payment of the signed in user to the ledgerwriter service.
+
+        Params: data - the payment form fields (account_num, amount, uuid and,
+                       for a new recipient, contact_account_num and contact_label)
+        """
+        account_id = decode_token(request.cookies.get(app.config['TOKEN_NAME']))['acct']
+        recipient = data['account_num']
+        if recipient == 'add':
+            recipient = data['contact_account_num']
+            label = data.get('contact_label', None)
+            if label:
+                # new contact. Add to contacts list
+                _add_contact(label,
+                             recipient,
+                             app.config['LOCAL_ROUTING'],
+                             False)
+
+        payment_amount = int(Decimal(str(data['amount'])) * 100)
+        transaction_data = {"fromAccountNum": account_id,
+                            "fromRoutingNum": app.config['LOCAL_ROUTING'],
+                            "toAccountNum": recipient,
+                            "toRoutingNum": app.config['LOCAL_ROUTING'],
+                            "amount": payment_amount,
+                            "uuid": data['uuid']}
+        _submit_transaction(transaction_data)
+
+    def _make_deposit(data):
+        """
+        Submits a deposit into the signed in user's account to the
+        ledgerwriter service.
+
+        Params: data - the deposit form fields (account, amount, uuid and, for
+                       a new external account, external_account_num,
+                       external_routing_num and external_label)
+        Raise: UserWarning if the routing number is the local routing number
+        """
+        account_id = decode_token(request.cookies.get(app.config['TOKEN_NAME']))['acct']
+        if data['account'] == 'add':
+            external_account_num = data['external_account_num']
+            external_routing_num = data['external_routing_num']
+            if external_routing_num == app.config['LOCAL_ROUTING']:
+                raise UserWarning("invalid routing number")
+            external_label = data.get('external_label', None)
+            if external_label:
+                # new contact. Add to contacts list
+                _add_contact(external_label,
+                             external_account_num,
+                             external_routing_num,
+                             True)
+        else:
+            account_details = data['account']
+            if isinstance(account_details, str):
+                account_details = json.loads(account_details)
+            external_account_num = account_details['account_num']
+            external_routing_num = account_details['routing_num']
+
+        transaction_data = {"fromAccountNum": external_account_num,
+                            "fromRoutingNum": external_routing_num,
+                            "toAccountNum": account_id,
+                            "toRoutingNum": app.config['LOCAL_ROUTING'],
+                            "amount": int(Decimal(str(data['amount'])) * 100),
+                            "uuid": data['uuid']}
+        _submit_transaction(transaction_data)
+
+    def _perform_transaction(kind, make, data):
+        """
+        Runs make(data) and reports how it went.
+
+        Params: kind - 'Payment' or 'Deposit'
+                make - _make_payment or _make_deposit
+                data - the submitted fields
+        Returns: (None, 200) on success, otherwise (reason, status) where
+                 reason completes "<kind> failed" and may be None
+        """
+        action = kind.lower()
+        try:
+            make(data)
+            app.logger.info('%s submitted successfully.', kind)
+            return None, 200
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error submitting %s: %s', action, str(err))
+            return None, 502
+        except TransactionError as err:
+            app.logger.error('Error submitting %s: %s', action, str(err))
+            return str(err), err.status_code
+        except UserWarning as warn:
+            app.logger.error('Error submitting %s: %s', action, str(warn))
+            return str(warn), 400
+        except (KeyError, ValueError, ArithmeticError) as input_err:
+            app.logger.error('Error submitting %s: %s', action, str(input_err))
+            if isinstance(input_err, KeyError):
+                return 'missing form field', 400
+            return f'{data.get("amount", "")} is not a valid number', 400
+
     @app.route('/payment', methods=['POST'])
     def payment():
         """
-        Submits payment request to ledgerwriter service
+        Submits payment request to ledgerwriter service (HTML form post)
 
         Fails if:
         - token is not valid
@@ -247,56 +446,19 @@ def create_app():
             # user isn't authenticated
             app.logger.error('Error submitting payment: user is not authenticated.')
             return abort(401)
-        try:
-            account_id = decode_token(token)['acct']
-            recipient = request.form['account_num']
-            if recipient == 'add':
-                recipient = request.form['contact_account_num']
-                label = request.form.get('contact_label', None)
-                if label:
-                    # new contact. Add to contacts list
-                    _add_contact(label,
-                                 recipient,
-                                 app.config['LOCAL_ROUTING'],
-                                 False)
-
-            user_input = request.form['amount']
-            payment_amount = int(Decimal(user_input) * 100)
-            transaction_data = {"fromAccountNum": account_id,
-                                "fromRoutingNum": app.config['LOCAL_ROUTING'],
-                                "toAccountNum": recipient,
-                                "toRoutingNum": app.config['LOCAL_ROUTING'],
-                                "amount": payment_amount,
-                                "uuid": request.form['uuid']}
-            _submit_transaction(transaction_data)
-            app.logger.info('Payment initiated successfully.')
-            return redirect(code=303,
-                            location=url_for('home',
-                                             msg='Payment successful',
-                                             _external=True,
-                                             _scheme=app.config['SCHEME']))
-
-        except requests.exceptions.RequestException as err:
-            app.logger.error('Error submitting payment: %s', str(err))
-            return _transaction_failed(token, 'Payment', status=502)
-        except TransactionError as err:
-            app.logger.error('Error submitting payment: %s', str(err))
-            return _transaction_failed(token, 'Payment', str(err), err.status_code)
-        except UserWarning as warn:
-            app.logger.error('Error submitting payment: %s', str(warn))
-            return _transaction_failed(token, 'Payment', str(warn))
-        except (KeyError, ValueError, DecimalException) as input_err:
-            app.logger.error('Error submitting payment: %s', str(input_err))
-            if isinstance(input_err, KeyError):
-                return _transaction_failed(token, 'Payment', 'missing form field')
-            return _transaction_failed(
-                token, 'Payment',
-                f'{request.form.get("amount", "")} is not a valid number')
+        reason, status = _perform_transaction('Payment', _make_payment, request.form)
+        if status != 200:
+            return _transaction_failed('Payment', reason, status)
+        return redirect(code=303,
+                        location=url_for('home',
+                                         msg='Payment successful',
+                                         _external=True,
+                                         _scheme=app.config['SCHEME']))
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
         """
-        Submits deposit request to ledgerwriter service
+        Submits deposit request to ledgerwriter service (HTML form post)
 
         Fails if:
         - token is not valid
@@ -308,56 +470,38 @@ def create_app():
             # user isn't authenticated
             app.logger.error('Error submitting deposit: user is not authenticated.')
             return abort(401)
-        try:
-            # get account id from token
-            account_id = decode_token(token)['acct']
-            if request.form['account'] == 'add':
-                external_account_num = request.form['external_account_num']
-                external_routing_num = request.form['external_routing_num']
-                if external_routing_num == app.config['LOCAL_ROUTING']:
-                    raise UserWarning("invalid routing number")
-                external_label = request.form.get('external_label', None)
-                if external_label:
-                    # new contact. Add to contacts list
-                    _add_contact(external_label,
-                                 external_account_num,
-                                 external_routing_num,
-                                 True)
-            else:
-                account_details = json.loads(request.form['account'])
-                external_account_num = account_details['account_num']
-                external_routing_num = account_details['routing_num']
+        reason, status = _perform_transaction('Deposit', _make_deposit, request.form)
+        if status != 200:
+            return _transaction_failed('Deposit', reason, status)
+        return redirect(code=303,
+                        location=url_for('home',
+                                         msg='Deposit successful',
+                                         _external=True,
+                                         _scheme=app.config['SCHEME']))
 
-            transaction_data = {"fromAccountNum": external_account_num,
-                                "fromRoutingNum": external_routing_num,
-                                "toAccountNum": account_id,
-                                "toRoutingNum": app.config['LOCAL_ROUTING'],
-                                "amount": int(Decimal(request.form['amount']) * 100),
-                                "uuid": request.form['uuid']}
-            _submit_transaction(transaction_data)
-            app.logger.info('Deposit submitted successfully.')
-            return redirect(code=303,
-                            location=url_for('home',
-                                             msg='Deposit successful',
-                                             _external=True,
-                                             _scheme=app.config['SCHEME']))
+    def _api_transaction(kind, make):
+        """Runs a transaction submitted by the single-page app as JSON"""
+        if _valid_token() is None:
+            app.logger.error('Error submitting %s: user is not authenticated.', kind.lower())
+            return _unauthorized()
+        reason, status = _perform_transaction(kind, make, _json_body())
+        if status != 200:
+            return jsonify(error=_failure_message(kind, reason)), status
+        return jsonify(message=f'{kind} successful')
 
-        except requests.exceptions.RequestException as err:
-            app.logger.error('Error submitting deposit: %s', str(err))
-            return _transaction_failed(token, 'Deposit', status=502)
-        except TransactionError as err:
-            app.logger.error('Error submitting deposit: %s', str(err))
-            return _transaction_failed(token, 'Deposit', str(err), err.status_code)
-        except UserWarning as warn:
-            app.logger.error('Error submitting deposit: %s', str(warn))
-            return _transaction_failed(token, 'Deposit', str(warn))
-        except (KeyError, ValueError, DecimalException) as input_err:
-            app.logger.error('Error submitting deposit: %s', str(input_err))
-            if isinstance(input_err, KeyError):
-                return _transaction_failed(token, 'Deposit', 'missing form field')
-            return _transaction_failed(
-                token, 'Deposit',
-                f'{request.form.get("amount", "")} is not a valid number')
+    @app.route('/api/payment', methods=['POST'])
+    def api_payment():
+        """
+        Submits payment request to ledgerwriter service (JSON)
+        """
+        return _api_transaction('Payment', _make_payment)
+
+    @app.route('/api/deposit', methods=['POST'])
+    def api_deposit():
+        """
+        Submits deposit request to ledgerwriter service (JSON)
+        """
+        return _api_transaction('Deposit', _make_deposit)
 
     def _submit_transaction(transaction_data):
         app.logger.debug('Submitting transaction.')
@@ -408,7 +552,7 @@ def create_app():
     @app.route("/login", methods=['GET'])
     def login_page():
         """
-        Renders login page. Redirects to /home if user already has a valid token.
+        Serves the single-page app. Redirects to /home if user already has a valid token.
         If this is an oauth flow, then redirect to a consent form.
         """
         token = request.cookies.get(app.config['TOKEN_NAME'])
@@ -447,26 +591,44 @@ def create_app():
                                         _external=True,
                                         _scheme=app.config['SCHEME']))
 
-        return render_template('login.html',
-                               app_name=app_name,
-                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
-                               cluster_name=cluster_name,
-                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               default_password=os.getenv('DEFAULT_PASSWORD', ''),
-                               default_user=os.getenv('DEFAULT_USERNAME', ''),
-                               message=request.args.get('msg', None),
-                               platform=platform,
-                               platform_display_name=platform_display_name,
-                               pod_name=pod_name,
-                               pod_zone=pod_zone,
-                               redirect_uri=redirect_uri,
-                               response_type=response_type,
-                               state=state)
+        return _render_shell()
+
+    def _authenticate(username, password):
+        """
+        Asks userservice for a token.
+
+        Returns: (token, max_age of the token in seconds)
+        Raise: RequestException/HTTPError if userservice does not accept the
+               credentials
+        """
+        app.logger.debug('Logging in.')
+        req = requests.get(url=app.config["LOGIN_URI"],
+                           params={'username': username, 'password': password},
+                           timeout=app.config['BACKEND_TIMEOUT']*2)
+        req.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
+        token = req.json()['token']
+        claims = decode_token(token)
+        return token, claims['exp'] - claims['iat']
+
+    def _consent_args(args):
+        """
+        The oauth parameters of a login that must continue on the consent
+        form, or None if the login is not part of an oauth flow
+        """
+        if ('response_type' in args and
+                'state' in args and
+                'redirect_uri' in args and
+                args['response_type'] == 'code'):
+            return {'state': args['state'],
+                    'redirect_uri': args['redirect_uri'],
+                    'app_name': args.get('app_name')}
+        return None
 
     @app.route('/login', methods=['POST'])
     def login():
         """
         Submits login request to userservice and saves resulting token
+        (HTML form post)
 
         Fails if userservice does not accept input username and password
         """
@@ -476,27 +638,14 @@ def create_app():
 
     def _login_helper(username, password, request_args):
         try:
-            app.logger.debug('Logging in.')
-            req = requests.get(url=app.config["LOGIN_URI"],
-                               params={'username': username, 'password': password},
-                               timeout=app.config['BACKEND_TIMEOUT']*2)
-            req.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
+            token, max_age = _authenticate(username, password)
 
-            # login success
-            token = req.json()['token']
-            claims = decode_token(token)
-            max_age = claims['exp'] - claims['iat']
-
-            if ('response_type' in request_args and
-                'state' in request_args and
-                'redirect_uri' in request_args and
-                    request_args['response_type'] == 'code'):
+            consent_args = _consent_args(request_args)
+            if consent_args is not None:
                 resp = make_response(redirect(url_for('consent',
-                                                      state=request_args['state'],
-                                                      redirect_uri=request_args['redirect_uri'],
-                                                      app_name=request_args['app_name'],
                                                       _external=True,
-                                                      _scheme=app.config['SCHEME'])))
+                                                      _scheme=app.config['SCHEME'],
+                                                      **consent_args)))
             else:
                 resp = make_response(redirect(url_for('home',
                                                       _external=True,
@@ -511,9 +660,45 @@ def create_app():
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
 
+    def _api_login_helper(username, password, body):
+        """
+        Logs in for the single-page app: sets the token cookie and tells
+        the app where to go next. Returns None if the login failed.
+        """
+        try:
+            token, max_age = _authenticate(username, password)
+        except (RequestException, HTTPError, KeyError, ValueError) as err:
+            app.logger.error('Error logging in: %s', str(err))
+            return None
+        consent_args = _consent_args(body)
+        if consent_args is not None:
+            location = '/consent?' + urlencode(
+                {k: v for k, v in consent_args.items() if v is not None})
+        else:
+            location = '/home'
+        resp = jsonify(redirect=location)
+        resp.set_cookie(app.config['TOKEN_NAME'], token, max_age=max_age)
+        app.logger.info('Successfully logged in.')
+        return resp
+
+    @app.route('/api/login', methods=['POST'])
+    def api_login():
+        """
+        Submits login request to userservice and saves resulting token (JSON)
+
+        Responds 401 if userservice does not accept input username and password
+        """
+        body = _json_body()
+        resp = _api_login_helper(str(body.get('username', '')),
+                                 str(body.get('password', '')),
+                                 body)
+        if resp is None:
+            return jsonify(error='Login failed'), 401
+        return resp
+
     @app.route("/consent", methods=['GET'])
     def consent_page():
-        """Renders consent page.
+        """Serves the single-page app, which renders the consent page.
 
         Retrieves auth code if the user has
         already logged in and consented.
@@ -529,17 +714,7 @@ def create_app():
                 resp = _auth_callback_helper(state, redirect_uri, token)
                 return resp
 
-            return render_template('consent.html',
-                                   app_name=app_name,
-                                   bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
-                                   cluster_name=cluster_name,
-                                   cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                                   platform=platform,
-                                   platform_display_name=platform_display_name,
-                                   pod_name=pod_name,
-                                   pod_zone=pod_zone,
-                                   redirect_uri=redirect_uri,
-                                   state=state)
+            return _render_shell()
 
         return make_response(redirect(url_for('login',
                                               response_type="code",
@@ -553,6 +728,7 @@ def create_app():
     def consent():
         """
         Check consent, write cookie if yes, and redirect accordingly
+        (HTML form post)
         """
         consent = request.args['consent']
         state = request.args['state']
@@ -570,7 +746,39 @@ def create_app():
             resp = make_response(redirect(redirect_uri + '#error=access_denied', 302))
         return resp
 
-    def _auth_callback_helper(state, redirect_uri, token):
+    @app.route('/api/consent', methods=['POST'])
+    def api_consent():
+        """
+        Check consent, write cookie if yes, and tell the single-page app
+        where to send the browser (JSON)
+
+        Fails if the redirect URI is not the one registered for the oauth client
+        """
+        if _valid_token() is None:
+            return _unauthorized()
+        body = _json_body()
+        redirect_uri = body.get('redirect_uri')
+        if ('REGISTERED_OAUTH_CLIENT_ID' not in os.environ or
+                redirect_uri != os.environ.get('ALLOWED_OAUTH_REDIRECT_URI')):
+            return jsonify(error='Invalid redirect_uri'), 400
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if body.get('consent') is True:
+            app.logger.info('User consent granted.')
+            resp = jsonify(redirect=_auth_callback_location(
+                str(body.get('state', '')), redirect_uri, token))
+            resp.set_cookie(app.config['CONSENT_COOKIE'], 'true')
+        else:
+            app.logger.info('User consent denied.')
+            resp = jsonify(redirect=redirect_uri + '#error=access_denied')
+        return resp
+
+    def _auth_callback_location(state, redirect_uri, token):
+        """
+        Retrieves the authorization code from the oauth client
+
+        Returns: where to send the browser next: the client's location, or
+                 the redirect URI with an error
+        """
         try:
             app.logger.debug('Retrieving authorization code.')
             callback_response = requests.post(url=redirect_uri,
@@ -579,19 +787,21 @@ def create_app():
                                               allow_redirects=False)
             if callback_response.status_code == requests.codes.found:
                 app.logger.info('Successfully retrieved auth code.')
-                location = callback_response.headers['Location']
-                return make_response(redirect(location, 302))
+                return callback_response.headers['Location']
 
             app.logger.error('Unexpected response status: %s', callback_response.status_code)
-            return make_response(redirect(redirect_uri + '#error=server_error', 302))
         except requests.exceptions.RequestException as err:
             app.logger.error('Error retrieving auth code: %s', str(err))
-        return make_response(redirect(redirect_uri + '#error=server_error', 302))
+        return redirect_uri + '#error=server_error'
+
+    def _auth_callback_helper(state, redirect_uri, token):
+        return make_response(redirect(
+            _auth_callback_location(state, redirect_uri, token), 302))
 
     @app.route("/signup", methods=['GET'])
     def signup_page():
         """
-        Renders signup page. Redirects to /login if token is not valid
+        Serves the single-page app. Redirects to /home if token is valid
         """
         token = request.cookies.get(app.config['TOKEN_NAME'])
         if verify_token(token):
@@ -600,19 +810,12 @@ def create_app():
             return redirect(url_for('home',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return render_template('signup.html',
-                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
-                               cluster_name=cluster_name,
-                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               platform=platform,
-                               platform_display_name=platform_display_name,
-                               pod_name=pod_name,
-                               pod_zone=pod_zone)
+        return _render_shell()
 
     @app.route("/signup", methods=['POST'])
     def signup():
         """
-        Submits signup request to userservice
+        Submits signup request to userservice (HTML form post)
 
         Fails if userservice does not accept input form data
         """
@@ -635,6 +838,31 @@ def create_app():
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
 
+    @app.route('/api/signup', methods=['POST'])
+    def api_signup():
+        """
+        Submits signup request to userservice and logs the new user in (JSON)
+
+        Responds 400 if userservice does not accept the input
+        """
+        body = _json_body()
+        try:
+            app.logger.debug('Creating new user.')
+            resp = requests.post(url=app.config["USERSERVICE_URI"],
+                                 data={k: str(v) for k, v in body.items()},
+                                 timeout=app.config['BACKEND_TIMEOUT'])
+            if resp.status_code == 201:
+                # user created. Attempt login
+                app.logger.info('New user created.')
+                login_resp = _api_login_helper(str(body.get('username', '')),
+                                               str(body.get('password', '')),
+                                               body)
+                # the account exists even if the login failed: go sign in
+                return login_resp or jsonify(redirect='/login')
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error creating new user: %s', str(err))
+        return jsonify(error='Account creation failed'), 400
+
     @app.route('/logout', methods=['POST'])
     def logout():
         """
@@ -644,6 +872,17 @@ def create_app():
         resp = make_response(redirect(url_for('login_page',
                                               _external=True,
                                               _scheme=app.config['SCHEME'])))
+        resp.delete_cookie(app.config['TOKEN_NAME'])
+        resp.delete_cookie(app.config['CONSENT_COOKIE'])
+        return resp
+
+    @app.route('/api/logout', methods=['POST'])
+    def api_logout():
+        """
+        Logs out user by deleting token cookie (JSON)
+        """
+        app.logger.info('Logging out.')
+        resp = jsonify(redirect='/login')
         resp.delete_cookie(app.config['TOKEN_NAME'])
         resp.delete_cookie(app.config['CONSENT_COOKIE'])
         return resp
@@ -671,28 +910,6 @@ def create_app():
             app.logger.error('Error validating token: %s', str(err))
             return False
 
-    # register html template formatters
-    def format_timestamp_day(timestamp):
-        """ Format the input timestamp day in a human readable way """
-        # TODO: time zones?
-        date = datetime.datetime.strptime(timestamp, app.config['TIMESTAMP_FORMAT'])
-        return date.strftime('%d')
-
-    def format_timestamp_month(timestamp):
-        """ Format the input timestamp month in a human readable way """
-        # TODO: time zones?
-        date = datetime.datetime.strptime(timestamp, app.config['TIMESTAMP_FORMAT'])
-        return date.strftime('%b')
-
-    def format_currency(int_amount):
-        """ Format the input currency in a human readable way """
-        if int_amount is None:
-            return '$---'
-        amount_str = '${:0,.2f}'.format(abs(Decimal(int_amount)/100))
-        if int_amount < 0:
-            amount_str = '-' + amount_str
-        return amount_str
-
     # set up global variables
     app.config["TRANSACTIONS_URI"] = 'http://{}/transactions'.format(
         os.environ.get('TRANSACTIONS_API_ADDR'))
@@ -712,7 +929,6 @@ def create_app():
     app.config['BACKEND_TIMEOUT'] = int(os.getenv('BACKEND_TIMEOUT', '4'))
     app.config['TOKEN_NAME'] = 'token'
     app.config['CONSENT_COOKIE'] = 'consented'
-    app.config['TIMESTAMP_FORMAT'] = '%Y-%m-%dT%H:%M:%S.%f%z'
     app.config['SCHEME'] = os.environ.get('SCHEME', 'http')
 
     # where am I?
@@ -746,11 +962,6 @@ def create_app():
             pod_zone = str(req.text.split("/")[3])
     except (RequestException, HTTPError) as err:
         app.logger.warning("Unable to retrieve zone from metadata server %s.", metadata_server)
-
-    # register formater functions
-    app.jinja_env.globals.update(format_currency=format_currency)
-    app.jinja_env.globals.update(format_timestamp_month=format_timestamp_month)
-    app.jinja_env.globals.update(format_timestamp_day=format_timestamp_day)
 
     # Set up logging
     app.logger.handlers = logging.getLogger('gunicorn.error').handlers

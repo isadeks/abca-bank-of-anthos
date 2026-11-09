@@ -16,6 +16,15 @@
 FROM python:3.14.7-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS base
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
+# Build the React app into static/dist
+FROM node:24-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS web
+
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm test && npm run build
+
 FROM base AS builder
 
 # Set working directory
@@ -44,6 +53,7 @@ ENV LOG_LEVEL=info
 
 # Add application code.
 COPY . .
+COPY --from=web /app/static/dist ./static/dist
 
 # Ensure files are readable for non-root users
 RUN find . -type f -name '*' -exec chmod a+r '{}' ';'

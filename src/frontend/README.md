@@ -2,7 +2,22 @@
 
 The frontend service manages the user-facing web interface for the application.
 
-Implemented in Python with Flask.
+A React single-page app (Vite, in `web/`) served by a Python Flask service. Flask serves
+the app's HTML for the pages below, serves its assets from `static/dist`, and answers the app's
+JSON calls. The page endpoints and form posts are kept for clients that do not run the app
+(a failed `/payment` or `/deposit` answers with the app and the error message in it).
+
+### Building the app
+
+```
+cd web
+npm ci
+npm test         # vitest unit tests
+npm run build    # writes ../static/dist, which Flask serves
+npm run dev      # Vite dev server on :5173, proxies /api to Flask on :8080
+```
+
+The `Dockerfile` runs these in a Node stage; `static/dist` is not committed.
 
 ### Endpoints
 
@@ -19,6 +34,20 @@ Implemented in Python with Flask.
 | `/signup`  | GET   |       |  Renders signup page if not authenticated. Otherwise redirects to `/home`                 |
 | `/signup`  | POST  |       |  Submits new user signup request to `userservice`                                         |
 | `/version` | GET   |       |  Returns the contents of `$VERSION`                                                       |
+
+JSON endpoints used by the app:
+
+| Endpoint        | Type | Auth? | Description                                                                 |
+| --------------- | ---- | ----- | --------------------------------------------------------------------------- |
+| `/api/config`   | GET  |       | Bank name, logo, platform, cluster details and the demo credentials          |
+| `/api/session`  | GET  | 🔒    | The signed in user (401 if not signed in)                                    |
+| `/api/home`     | GET  | 🔒    | Account number, balance, transaction history and contacts                    |
+| `/api/login`    | POST |       | Logs in; answers with where the app goes next (home or the consent form)     |
+| `/api/signup`   | POST |       | Creates an account and logs in                                               |
+| `/api/logout`   | POST |       | Deletes the token cookie                                                     |
+| `/api/payment`  | POST | 🔒    | Submits a payment; 4xx/5xx with `error` if it fails                          |
+| `/api/deposit`  | POST | 🔒    | Submits a deposit; 4xx/5xx with `error` if it fails                          |
+| `/api/consent`  | POST | 🔒    | Answers an OAuth consent request; answers with where to send the browser     |
 
 ### Environment Variables
 

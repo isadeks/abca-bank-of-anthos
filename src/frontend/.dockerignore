@@ -6,3 +6,5 @@ __pycache__
 README.md
 skaffold.yaml
 .kpt-pipeline
+web/node_modules
+static/dist
