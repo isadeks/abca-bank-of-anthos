@@ -21,12 +21,20 @@ document.addEventListener("DOMContentLoaded", function(event) {
     if(!login.checkValidity()){
       e.preventDefault();
       e.stopPropagation();
+      A11y.reportInvalid(login);
     }
     login.classList.add('was-validated');
   });
 
   var showAlert = (window.location.search == "?msg=Login+Failed");
   if (showAlert){
-      document.querySelector("#alertBanner").classList.remove("hidden");
+      // The banner sits inside a role="alert" live region that is already in
+      // the page, so revealing it is announced by screen readers.
+      setTimeout(function() {
+        document.querySelector("#alertBanner").classList.remove("hidden");
+      }, 100);
+      document.querySelectorAll("#login-username, #login-password").forEach(function(input) {
+        input.setAttribute("aria-describedby", "alertBanner");
+      });
   }
 });
