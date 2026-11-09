@@ -441,8 +441,16 @@ dependencies = [
     { name = "locust" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [{ name = "locust", specifier = ">=2.42.6" }]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=7.4.4" }]
 
 [[package]]
 name = "locust"

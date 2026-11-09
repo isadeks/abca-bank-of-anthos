@@ -47,7 +47,22 @@ spec:
             - name: LOG_LEVEL
               value: error
           image: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/loadgenerator:v0.6.11@sha256:59928b82854e79bcf4c30561a6268fcb20a7a53275111b2fcb9174d28dc97a4c
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8089
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 3
           name: loadgenerator
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8089
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
           resources:
             limits:
               cpu: 250m
