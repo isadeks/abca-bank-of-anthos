@@ -14,6 +14,7 @@ Implemented in Java with Spring Boot and Guava.
 | `/healthy`                  | GET   |       |  Liveness probe endpoint. Monitors health of background thread.               |
 | `/ready`                    | GET   |       |  Readiness probe endpoint.                                                    |
 | `/transactions/<accountid>` | GET   | 🔒    |  Return the account transaction list iff authenticated to access the account. |
+| `/spending/<accountid>`     | GET   | 🔒    |  Return the total sent per counterparty (`counterpartyAccountNum`, `counterpartyRoutingNum`, `totalCents`) in the current and previous calendar month (UTC), computed by the database from the ledger. Transfers to oneself are not counted. |
 | `/version`                  | GET   |       |  Returns the contents of `$VERSION`                                           |
 
 ### Environment Variables
