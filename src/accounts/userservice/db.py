@@ -32,7 +32,7 @@ class UserDb:
         self.logger = logger
         self.users_table = Table(
             'users',
-            MetaData(self.engine),
+            MetaData(),
             Column('accountid', String, primary_key=True),
             Column('username', String, unique=True, nullable=False),
             Column('passhash', LargeBinary, nullable=False),
@@ -61,7 +61,7 @@ class UserDb:
         """
         statement = self.users_table.insert().values(user)
         self.logger.debug('QUERY: %s', str(statement))
-        with self.engine.connect() as conn:
+        with self.engine.begin() as conn:
             conn.execute(statement)
 
     def generate_accountid(self):
@@ -98,4 +98,4 @@ class UserDb:
         with self.engine.connect() as conn:
             result = conn.execute(statement).first()
         self.logger.debug('RESULT: fetched user data for %s', username)
-        return dict(result) if result is not None else None
+        return dict(result._mapping) if result is not None else None

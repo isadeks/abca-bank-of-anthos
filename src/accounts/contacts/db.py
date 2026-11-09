@@ -32,7 +32,7 @@ class ContactsDb:
         self.logger = logger
         self.contacts_table = Table(
             "contacts",
-            MetaData(self.engine),
+            MetaData(),
             Column("username", String, nullable=False),
             Column("label", String, nullable=False),
             Column("account_num", String, nullable=False),
@@ -55,7 +55,7 @@ class ContactsDb:
         """
         statement = self.contacts_table.insert().values(contact)
         self.logger.debug("QUERY: %s", str(statement))
-        with self.engine.connect() as conn:
+        with self.engine.begin() as conn:
             conn.execute(statement)
 
     def get_contacts(self, username):
@@ -72,14 +72,13 @@ class ContactsDb:
         )
         self.logger.debug("QUERY: %s", str(statement))
         with self.engine.connect() as conn:
-            result = conn.execute(statement)
-        for row in result:
-            contact = {
-                "label": row["label"],
-                "account_num": row["account_num"],
-                "routing_num": row["routing_num"],
-                "is_external": row["is_external"],
-            }
-            contacts.append(contact)
+            for row in conn.execute(statement):
+                contact = {
+                    "label": row.label,
+                    "account_num": row.account_num,
+                    "routing_num": row.routing_num,
+                    "is_external": row.is_external,
+                }
+                contacts.append(contact)
         self.logger.debug("RESULT: Fetched %d contacts.", len(contacts))
         return contacts
