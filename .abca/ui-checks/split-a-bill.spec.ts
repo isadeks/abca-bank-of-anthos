@@ -16,8 +16,10 @@ test('split a bill between three contacts with a summary before sending', async 
   await expect(form).toBeVisible();
   const contacts = form.locator('input.split-contact');
   await expect(contacts.nth(2)).toBeAttached();
+  // tick the contacts the way a user does: by clicking their labels
   for (let i = 0; i < 3; i++) {
-    await contacts.nth(i).check({ force: true });
+    await form.locator('#split-contacts label').nth(i).click();
+    await expect(contacts.nth(i)).toBeChecked();
   }
   await page.locator('#split-amount').fill('10.01');
   await highlight(page, page.locator('#split-contacts'), 'three contacts');
