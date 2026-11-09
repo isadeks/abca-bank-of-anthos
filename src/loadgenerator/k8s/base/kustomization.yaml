@@ -19,3 +19,5 @@ commonLabels:
   team: loadgenerator
 resources:
   - loadgenerator.yaml
+components:
+  - ../../../components/add-tmp-dir

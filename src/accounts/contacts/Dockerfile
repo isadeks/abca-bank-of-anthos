@@ -36,6 +36,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 # show python logs as they occur
 ENV PYTHONUNBUFFERED=0
 
+# the root filesystem is read-only: do not try to write .pyc files next to the code
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # explicitly set a fallback log level in case no log level is defined by Kubernetes
 ENV LOG_LEVEL=info
 
@@ -44,5 +47,10 @@ COPY . .
 
 # Ensure files are readable for non-root users
 RUN chmod a+r *
+
+# Run as a fixed non-root user (uid/gid 1000, matching the manifests' runAsUser/runAsGroup).
+# The code and virtualenv are only read at runtime; writable paths are the mounted /tmp.
+RUN groupadd --gid 1000 app && useradd --uid 1000 --gid 1000 --no-create-home --shell /usr/sbin/nologin app
+USER 1000:1000
 
 CMD gunicorn -b :$PORT --threads 4 --log-config logging.conf --log-level=$LOG_LEVEL "contacts:create_app()"

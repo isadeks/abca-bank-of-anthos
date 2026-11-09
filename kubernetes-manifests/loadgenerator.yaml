@@ -62,6 +62,9 @@ spec:
                 - all
             privileged: false
             readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmp
       restartPolicy: Always
       securityContext:
         fsGroup: 1000
@@ -70,3 +73,6 @@ spec:
         runAsUser: 1000
       serviceAccountName: default
       terminationGracePeriodSeconds: 5
+      volumes:
+        - emptyDir: {}
+          name: tmp
