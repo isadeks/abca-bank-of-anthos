@@ -26,6 +26,67 @@ patches:
       - op: add
         path: /spec/template/spec/nodeSelector
         value: {kubernetes.io/arch: amd64}
+  # Database passwords come from the Secret `db-credentials` that the platform creates in every
+  # namespace (keys ACCOUNTS_DB_PASSWORD, LEDGER_DB_PASSWORD); it is never committed. The plain-text
+  # passwords (and the URI that embeds one) are removed from the ConfigMaps and rebuilt in the pods.
+  - target: {kind: ConfigMap, name: accounts-db-config}
+    patch: |-
+      - op: remove
+        path: /data/POSTGRES_PASSWORD
+      - op: remove
+        path: /data/ACCOUNTS_DB_URI
+  - target: {kind: ConfigMap, name: ledger-db-config}
+    patch: |-
+      - op: remove
+        path: /data/POSTGRES_PASSWORD
+      - op: remove
+        path: /data/SPRING_DATASOURCE_PASSWORD
+  - target: {kind: StatefulSet, name: accounts-db}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: ACCOUNTS_DB_PASSWORD}}
+  - target: {kind: StatefulSet, name: ledger-db}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: POSTGRES_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: LEDGER_DB_PASSWORD}}
+  # $(ACCOUNTS_DB_PASSWORD) is expanded by Kubernetes, so it must be defined before the URI.
+  - target: {kind: Deployment, name: userservice}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: ACCOUNTS_DB_PASSWORD}}
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_URI
+          value: postgresql://accounts-admin:$(ACCOUNTS_DB_PASSWORD)@accounts-db:5432/accounts-db
+  - target: {kind: Deployment, name: contacts}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: ACCOUNTS_DB_PASSWORD}}
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_URI
+          value: postgresql://accounts-admin:$(ACCOUNTS_DB_PASSWORD)@accounts-db:5432/accounts-db
+  - target: {kind: Deployment, name: "balancereader|ledgerwriter|transactionhistory"}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SPRING_DATASOURCE_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: LEDGER_DB_PASSWORD}}
 images:
   - name: us-central1-docker.pkg.dev/bank-of-anthos-ci/bank-of-anthos/frontend
     newName: REGISTRY/abca-boa/frontend
