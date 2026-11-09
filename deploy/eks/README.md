@@ -7,6 +7,7 @@ This overlay runs the upstream manifests on EKS Auto Mode:
 - **No GKE Workload Identity** annotation on the service account.
 - **Frontend** behind an internet-facing NLB that only accepts the CIDRs in `frontend-lb.yaml`.
 - **JWT key** generated per namespace by `jwt-key.sh`; it is never committed.
+- **Database passwords** are read from the Secret `db-credentials` (keys `ACCOUNTS_DB_PASSWORD`, `LEDGER_DB_PASSWORD`), which the platform creates in every namespace and which is never committed. The overlay removes the plain-text passwords (and `ACCOUNTS_DB_URI`) from the db ConfigMaps and injects them with `secretKeyRef`; `userservice` and `contacts` build `ACCOUNTS_DB_URI` from `$(ACCOUNTS_DB_PASSWORD)`, so the password must be URL-safe (e.g. hex or alphanumeric). The upstream manifests keep their demo passwords for GKE.
 - **No account-specific values** in the repo: `apply.sh` fills in the registry and the allow-list.
 
 ```bash
