@@ -124,6 +124,24 @@
   .account-user-avatar {
     margin-right: 5px;
   }
+  .language-switch {
+    display: flex;
+    align-items: center;
+    margin: 0 0 0 auto;
+  }
+  .language-option {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    color: #343434;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 4px 8px;
+  }
+  .language-option.active {
+    border-bottom-color: #343434;
+    font-weight: 700;
+  }
   #logout-form a:hover {
     cursor: pointer;
   }

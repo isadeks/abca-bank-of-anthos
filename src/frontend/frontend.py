@@ -45,6 +45,8 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 from api_call import ApiCall, ApiRequest
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
+from i18n import DEFAULT_LANG, LANG_COOKIE, LANGUAGES, normalize_lang, \
+    not_a_number, translate
 
 # Local constants
 BALANCE_NAME = "balance"
@@ -67,6 +69,38 @@ def create_app():
     of the Frontend Flask App
     """
     app = Flask(__name__)
+
+    def current_lang():
+        """The language chosen with the header switch (English by default)"""
+        return normalize_lang(request.cookies.get(LANG_COOKIE, DEFAULT_LANG))
+
+    @app.context_processor
+    def inject_i18n():
+        """Make the translation helper and language switch data available to templates"""
+        lang = current_lang()
+        # After switching, come back to this page (a GET); other pages go home
+        if request.method == 'GET':
+            lang_next = request.full_path.rstrip('?')
+        else:
+            lang_next = '/'
+        return {'_': lambda text: translate(text, lang),
+                'lang': lang,
+                'languages': LANGUAGES,
+                'lang_next': lang_next}
+
+    @app.route('/language', methods=['POST'])
+    def set_language():
+        """
+        Stores the chosen language in a cookie and returns to the previous page
+        """
+        lang = normalize_lang(request.form.get('lang'))
+        target = request.form.get('next', '/')
+        # Only redirect to a path on this site
+        if not target.startswith('/') or target.startswith('//') or '\\' in target:
+            target = '/'
+        resp = make_response(redirect(target, code=303))
+        resp.set_cookie(LANG_COOKIE, lang, max_age=365 * 24 * 3600, samesite='Lax')
+        return resp
 
     # Disabling unused-variable for lines with route decorated functions
     # as pylint thinks they are unused
@@ -115,7 +149,10 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return _render_home(token, message=request.args.get('msg', None))
+        message = request.args.get('msg', None)
+        if message is not None:
+            message = translate(message, current_lang())
+        return _render_home(token, message=message)
 
     def _render_home(token, message=None, is_error=False, status=200):
         """
@@ -199,7 +236,10 @@ def create_app():
                 reason - optional explanation shown after the message
                 status - HTTP status code of the response
         """
-        msg = f'{kind} failed: {reason}' if reason else f'{kind} failed'
+        lang = current_lang()
+        msg = translate(f'{kind} failed', lang)
+        if reason:
+            msg = f'{msg}: {translate(reason, lang)}'
         return _render_home(token, message=msg, is_error=True, status=status)
 
     def _populate_contact_labels(account_id, transactions, contacts):
@@ -291,7 +331,7 @@ def create_app():
                 return _transaction_failed(token, 'Payment', 'missing form field')
             return _transaction_failed(
                 token, 'Payment',
-                f'{request.form.get("amount", "")} is not a valid number')
+                not_a_number(request.form.get("amount", ""), current_lang()))
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
@@ -357,7 +397,7 @@ def create_app():
                 return _transaction_failed(token, 'Deposit', 'missing form field')
             return _transaction_failed(
                 token, 'Deposit',
-                f'{request.form.get("amount", "")} is not a valid number')
+                not_a_number(request.form.get("amount", ""), current_lang()))
 
     def _submit_transaction(transaction_data):
         app.logger.debug('Submitting transaction.')
@@ -447,6 +487,9 @@ def create_app():
                                         _external=True,
                                         _scheme=app.config['SCHEME']))
 
+        login_message = request.args.get('msg', None)
+        if login_message is not None:
+            login_message = translate(login_message, current_lang())
         return render_template('login.html',
                                app_name=app_name,
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
@@ -454,7 +497,7 @@ def create_app():
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                default_password=os.getenv('DEFAULT_PASSWORD', ''),
                                default_user=os.getenv('DEFAULT_USERNAME', ''),
-                               message=request.args.get('msg', None),
+                               message=login_message,
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,

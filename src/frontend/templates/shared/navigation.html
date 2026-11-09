@@ -11,6 +11,12 @@
             {{ bank_name }}
           </a>
         {% endif %}
+          <form id="language-form" class="language-switch" method="POST" action="/language" aria-label="{{ _('Language') }}">
+            <input type="hidden" name="next" value="{{ lang_next }}">
+            {% for code, label in languages.items() %}
+            <button type="submit" name="lang" value="{{ code }}" id="lang-{{ code }}" lang="{{ code }}" class="language-option{% if code == lang %} active{% endif %}"{% if code == lang %} aria-current="true"{% endif %}>{{ label }}</button>
+            {% endfor %}
+          </form>
         {% if name %}
           <button type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation" class="navbar-toggler navbar-toggler-right">
             <span class="material-icons">menu</span>
@@ -25,7 +31,7 @@
                 </a>
                 <div class="dropdown-menu" aria-labelledby="accountDropdown">
                   <form id="logout-form" method="POST" action="/logout">
-                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">Sign out<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
+                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">{{ _('Sign out') }}<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
                   </form>
                 </div>
               </li>
