@@ -71,6 +71,28 @@ document.addEventListener("DOMContentLoaded", function(event) {
   });
 
 
+  // Filter the transaction history by counterparty name (label) or account number
+  var searchBox = document.querySelector("#transaction-search");
+  if (searchBox) {
+    searchBox.addEventListener("input", function() {
+      var query = searchBox.value.trim().toLowerCase();
+      var visible = 0;
+      document.querySelectorAll("#transaction-list tr").forEach(function(row) {
+        var account = row.querySelector(".transaction-account");
+        var label = row.querySelector(".transaction-label");
+        // Rows without a contact label show a "None" placeholder; don't match it
+        var hasLabel = label && !label.querySelector(".transaction-label-none");
+        var text = ((account ? account.textContent : "") + " " +
+                    (hasLabel ? label.textContent : "")).toLowerCase();
+        var match = query === "" || text.indexOf(query) !== -1;
+        row.hidden = !match;
+        if (match) { visible++; }
+      });
+      document.querySelector("#no-matching-transactions")
+        .classList.toggle("hidden", visible > 0);
+    });
+  }
+
   function uuidv4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
