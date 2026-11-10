@@ -90,6 +90,15 @@ class TestTransactionSearch(unittest.TestCase):
             r'class="[^"]*hidden[^"]*" id="no-matching-transactions">'
             r'No matching transactions<')
 
+    def test_no_match_message_is_not_a_table_header(self):
+        """the e2e login spec expects no card-table-header inside the table"""
+        body = self.render_home(HISTORY)
+        start = body.index('id="transaction-table"')
+        end = body.index('No matching transactions<', start)
+        # between the table container and the message, only the real
+        # (error/empty) header class would appear; it must not here
+        self.assertNotIn('card-table-header', body[start:end + 30])
+
     def test_rows_expose_account_and_label(self):
         """the cells the script filters on are present"""
         body = self.render_home(HISTORY)
