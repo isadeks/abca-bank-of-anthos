@@ -23,14 +23,23 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics;
+import java.time.Clock;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +70,9 @@ public final class TransactionHistoryController {
     @Value("${HISTORY_LIMIT:100}")
     private Integer historyLimit;
     private String version;
+    private String localRoutingNum;
+    // Calendar months of the spending summary are UTC months.
+    private Clock clock = Clock.systemUTC();
 
     private JWTVerifier verifier;
     private LedgerReader ledgerReader;
@@ -80,6 +92,7 @@ public final class TransactionHistoryController {
             @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
             @Value("${VERSION}") final String version) {
         this.version = version;
+        this.localRoutingNum = localRoutingNum;
         // Initialize JWT verifier.
         this.verifier = verifier;
         // Initialize cache
@@ -216,6 +229,87 @@ public final class TransactionHistoryController {
         } catch (ExecutionException | UncheckedExecutionException e) {
             LOGGER.error("Cache error");
             return new ResponseEntity<>("cache error",
+                                              HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Return how much the account sent to each counterparty in the current
+     * and in the previous calendar month (UTC).
+     *
+     * The totals come from a grouped query on the ledger and not from the
+     * cached history, which holds only the latest transactions.
+     *
+     * The currently authenticated user must be allowed to access the account.
+     * @param bearerToken  HTTP request 'Authorization' header
+     * @param accountId    the account to get the spending of.
+     * @return             the current month first, then the previous month,
+     *                     each with its totals per counterparty, or
+     *                     HTTP 400 if the account id is not numeric, or
+     *                     HTTP 401 if the user may not access the account.
+     */
+    @GetMapping("/spending/{accountId}")
+    public ResponseEntity<?> getSpending(
+            @RequestHeader("Authorization") String bearerToken,
+            @PathVariable String accountId) {
+
+        if (!ACCOUNT_ID_REGEX.matcher(accountId).matches()) {
+            LOGGER.error("Failed to retrieve account spending: "
+                + "invalid account id");
+            return new ResponseEntity<>("invalid account id",
+                                              HttpStatus.BAD_REQUEST);
+        }
+
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            bearerToken = bearerToken.split("Bearer ")[1];
+        }
+        try {
+            DecodedJWT jwt = verifier.verify(bearerToken);
+            // Check that the authenticated user can access this account.
+            if (!accountId.equals(jwt.getClaim("acct").asString())) {
+                LOGGER.error("Failed to retrieve account spending: "
+                    + "not authorized");
+                return new ResponseEntity<>("not authorized",
+                                                  HttpStatus.UNAUTHORIZED);
+            }
+
+            YearMonth current = YearMonth.now(clock);
+            YearMonth previous = current.minusMonths(1);
+            LocalDateTime from = previous.atDay(1).atStartOfDay();
+            List<Object[]> rows = dbRepo.spendingByCounterparty(
+                accountId, localRoutingNum, from);
+
+            Map<String, List<CounterpartySpending>> byMonth = new HashMap<>();
+            for (Object[] row : rows) {
+                byMonth.computeIfAbsent(row[0].toString(),
+                        month -> new ArrayList<>())
+                    .add(new CounterpartySpending(
+                        row[1].toString().trim(),
+                        row[2].toString().trim(),
+                        ((Number) row[3]).longValue()));
+            }
+            List<MonthlySpending> response = new ArrayList<>();
+            for (YearMonth month : List.of(current, previous)) {
+                List<CounterpartySpending> totals = byMonth.getOrDefault(
+                    month.toString(), new ArrayList<>());
+                totals.sort(Comparator
+                    .comparingLong(CounterpartySpending::totalCents)
+                    .reversed()
+                    .thenComparing(CounterpartySpending::counterpartyAccountNum)
+                    .thenComparing(CounterpartySpending::counterpartyRoutingNum));
+                response.add(new MonthlySpending(month.toString(), totals));
+            }
+            return new ResponseEntity<List<MonthlySpending>>(
+                response, HttpStatus.OK);
+        } catch (JWTVerificationException e) {
+            LOGGER.error("Failed to retrieve account spending: "
+                + "not authorized");
+            return new ResponseEntity<>("not authorized",
+                                              HttpStatus.UNAUTHORIZED);
+        } catch (DataAccessException e) {
+            LOGGER.error("Failed to retrieve account spending: "
+                + "database error");
+            return new ResponseEntity<>("database error",
                                               HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

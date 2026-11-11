@@ -14,6 +14,7 @@
 
 package anthos.samples.bankofanthos.transactionhistory;
 
+import java.time.LocalDateTime;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -69,4 +70,36 @@ public interface TransactionRepository
     @Query("SELECT t FROM Transaction t "
         + " WHERE t.transactionId > ?1 ORDER BY t.transactionId ASC")
     List<Transaction> findLatest(long latestTransaction);
+
+    /**
+     * Returns the total sent by an account to each counterparty per
+     * calendar month, from a given time onward.
+     *
+     * The totals are computed by the database from the outgoing rows of the
+     * account, not from the capped history list. The rows are read through
+     * the (FROM_ACCT, FROM_ROUTE, TIMESTAMP) index with a range on the
+     * timestamp, so the cost depends on the months scanned and not on the
+     * whole history of the account. The parameters are cast to the types of
+     * the columns so that the index can be used. Transfers to the account
+     * itself are not spending and are left out.
+     *
+     * Each row is {month "YYYY-MM", receiving account number, receiving
+     * routing number, total in cents}.
+     *
+     * @param accountNum the sending account number
+     * @param routingNum the sending routing number
+     * @param from       the start of the first month to include
+     */
+    @Query(value = "SELECT TO_CHAR(DATE_TRUNC('month', TIMESTAMP), 'YYYY-MM'),"
+        + " TO_ACCT, TO_ROUTE, SUM(AMOUNT) "
+        + " FROM TRANSACTIONS "
+        + " WHERE FROM_ACCT = CAST(?1 AS CHAR(10)) "
+        + "   AND FROM_ROUTE = CAST(?2 AS CHAR(9)) "
+        + "   AND TIMESTAMP >= CAST(?3 AS TIMESTAMP) "
+        + "   AND NOT (TO_ACCT = FROM_ACCT AND TO_ROUTE = FROM_ROUTE) "
+        + " GROUP BY 1, 2, 3",
+        nativeQuery = true)
+    List<Object[]> spendingByCounterparty(String accountNum,
+                                          String routingNum,
+                                          LocalDateTime from);
 }
