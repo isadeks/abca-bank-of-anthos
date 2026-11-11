@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - accounts-db.yaml
   - balance-reader.yaml
+  - budgets.yaml
   - config.yaml
   - contacts.yaml
   - frontend.yaml
