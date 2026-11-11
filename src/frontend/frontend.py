@@ -49,6 +49,7 @@ from trace_logging import add_trace_context
 # Local constants
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
+SAVINGS_NAME = "savings"
 TRANSACTION_LIST_NAME = "transaction_list"
 
 
@@ -150,15 +151,23 @@ def create_app():
                     api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get the savings account, if the user opened one
+            ApiCall(display_name=SAVINGS_NAME,
+                    api_request=ApiRequest(
+                        url=f'{app.config["USERSERVICE_URI"]}/{username}/savings',
+                        headers=hed,
+                        timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger)
         ]
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
-                        CONTACTS_NAME: []}
+                        CONTACTS_NAME: [],
+                        SAVINGS_NAME: None}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -189,7 +198,9 @@ def create_app():
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
-                               pod_zone=pod_zone), status
+                               pod_zone=pod_zone,
+                               savings_account_id=(api_response[SAVINGS_NAME] or {})
+                               .get('accountid')), status
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -231,6 +242,44 @@ def create_app():
                 trans['accountLabel'] = contact_map.get(trans['fromAccountNum'])
             elif trans['fromAccountNum'] == account_id:
                 trans['accountLabel'] = contact_map.get(trans['toAccountNum'])
+
+    @app.route('/savings', methods=['POST'])
+    def open_savings_account():
+        """
+        Opens a savings account for the signed in user, through userservice
+
+        Fails if:
+        - token is not valid
+        - the user already has a savings account
+        - userservice cannot open the account
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            # user isn't authenticated
+            app.logger.error('Error opening savings account: user is not authenticated.')
+            return abort(401)
+        username = decode_token(token)['user']
+        try:
+            resp = requests.post(url=f'{app.config["USERSERVICE_URI"]}/{username}/savings',
+                                 timeout=app.config['BACKEND_TIMEOUT'])
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error opening savings account: %s', str(err))
+            return _render_home(token, message='Could not open a savings account',
+                                is_error=True, status=502)
+        if resp.status_code == 409:
+            return _render_home(token, message='You already have a savings account',
+                                is_error=True, status=409)
+        if resp.status_code != 201:
+            app.logger.error('Error opening savings account: %s %s',
+                             resp.status_code, resp.text)
+            return _render_home(token, message='Could not open a savings account',
+                                is_error=True, status=502)
+        app.logger.info('Savings account opened.')
+        return redirect(code=303,
+                        location=url_for('home',
+                                         msg='Savings account opened',
+                                         _external=True,
+                                         _scheme=app.config['SCHEME']))
 
     @app.route('/payment', methods=['POST'])
     def payment():
