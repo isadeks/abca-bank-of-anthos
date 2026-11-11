@@ -27,7 +27,7 @@ import bcrypt
 import jwt
 from flask import Flask, jsonify, request
 import bleach
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -159,6 +159,45 @@ def create_app():
         # Check if passwords match
         if not req['password'] == req['password-repeat']:
             raise UserWarning('passwords do not match')
+
+    @app.route('/users/<username>/savings', methods=['GET'])
+    def get_savings_account(username):
+        """Get the savings account of a user.
+
+        Returns 404 if the user has no savings account.
+        """
+        try:
+            accountid = users_db.get_savings_account(username)
+        except SQLAlchemyError as err:
+            app.logger.error('Error getting savings account: %s', str(err))
+            return 'failed to retrieve savings account', 500
+        if accountid is None:
+            return 'no savings account', 404
+        return jsonify({'accountid': accountid}), 200
+
+    @app.route('/users/<username>/savings', methods=['POST'])
+    def create_savings_account(username):
+        """Open a savings account for a user.
+
+        Generates a unique accountid. A user can have one savings account:
+        returns 404 if the user does not exist, 409 if they already have one.
+        """
+        try:
+            if users_db.get_user(username) is None:
+                return 'user {} does not exist'.format(username), 404
+            if users_db.get_savings_account(username) is not None:
+                return 'user {} already has a savings account'.format(username), 409
+            accountid = users_db.generate_accountid()
+            users_db.add_savings_account(username, accountid)
+            app.logger.info('Successfully opened a savings account.')
+        except IntegrityError as err:
+            # a concurrent request opened the account first
+            app.logger.error('Error opening savings account: %s', str(err))
+            return 'user {} already has a savings account'.format(username), 409
+        except SQLAlchemyError as err:
+            app.logger.error('Error opening savings account: %s', str(err))
+            return 'failed to open savings account', 500
+        return jsonify({'accountid': accountid}), 201
 
     @app.route('/login', methods=['GET'])
     def login():

@@ -46,6 +46,17 @@ class UserDb:
             Column('ssn', String, nullable=False),
         )
 
+        # Savings accounts a user opened, one per user. The table is created
+        # on first use (see ensure_savings_table), so that an existing
+        # accounts-db picks it up without re-running its init scripts.
+        self.savings_table = Table(
+            'savings_accounts',
+            self.users_table.metadata,
+            Column('accountid', String, primary_key=True),
+            Column('username', String, unique=True, nullable=False),
+        )
+        self._savings_table_ready = False
+
         # Set up tracing autoinstrumentation for sqlalchemy
         SQLAlchemyInstrumentor().instrument(
             engine=self.engine,
@@ -64,9 +75,22 @@ class UserDb:
         with self.engine.begin() as conn:
             conn.execute(statement)
 
+    def ensure_savings_table(self):
+        """Create the savings accounts table if it does not exist yet.
+
+        Raises: SQLAlchemyError if there was an issue with the database
+        """
+        if not self._savings_table_ready:
+            self.savings_table.create(self.engine, checkfirst=True)
+            self._savings_table_ready = True
+
     def generate_accountid(self):
-        """Generates a globally unique alphanumerical accountid."""
+        """Generates a globally unique alphanumerical accountid.
+
+        Unique among both the checking accounts (users) and savings accounts.
+        """
         self.logger.debug('Generating an account ID')
+        self.ensure_savings_table()
         accountid = None
         with self.engine.connect() as conn:
             while accountid is None:
@@ -77,6 +101,12 @@ class UserDb:
                 )
                 self.logger.debug('QUERY: %s', str(statement))
                 result = conn.execute(statement).first()
+                if result is None:
+                    statement = self.savings_table.select().where(
+                        self.savings_table.c.accountid == accountid
+                    )
+                    self.logger.debug('QUERY: %s', str(statement))
+                    result = conn.execute(statement).first()
                 # If there already exists an account, try again.
                 if result is not None:
                     accountid = None
@@ -99,3 +129,32 @@ class UserDb:
             result = conn.execute(statement).first()
         self.logger.debug('RESULT: fetched user data for %s', username)
         return dict(result._mapping) if result is not None else None
+
+    def get_savings_account(self, username):
+        """Get the savings account of the specified user.
+
+        Params: username - the username of the user
+        Return: the savings account id, or None if the user has none
+        Raises: SQLAlchemyError if there was an issue with the database
+        """
+        self.ensure_savings_table()
+        statement = self.savings_table.select().where(
+            self.savings_table.c.username == username
+        )
+        self.logger.debug('QUERY: %s', str(statement))
+        with self.engine.connect() as conn:
+            result = conn.execute(statement).first()
+        return result._mapping['accountid'] if result is not None else None
+
+    def add_savings_account(self, username, accountid):
+        """Record a savings account for a user.
+
+        Raises: SQLAlchemyError (IntegrityError if the user already has one)
+                if there was an issue with the database
+        """
+        self.ensure_savings_table()
+        statement = self.savings_table.insert().values(
+            accountid=accountid, username=username)
+        self.logger.debug('QUERY: %s', str(statement))
+        with self.engine.begin() as conn:
+            conn.execute(statement)
