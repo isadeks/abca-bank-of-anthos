@@ -9,5 +9,6 @@ resources:
   - ledger-db.yaml
   - ledger-writer.yaml
   - loadgenerator.yaml
+  - scheduledpayments.yaml
   - transaction-history.yaml
   - userservice.yaml

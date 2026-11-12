@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import socket
+from urllib.parse import quote
 from decimal import Decimal, DecimalException
 from time import sleep
 
@@ -50,6 +51,8 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+SCHEDULES_NAME = "schedules"
+SCHEDULE_FREQUENCIES = ("weekly", "monthly")
 
 
 class TransactionError(UserWarning):
@@ -150,15 +153,22 @@ def create_app():
                     api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get scheduled (recurring) payments
+            ApiCall(display_name=SCHEDULES_NAME,
+                    api_request=ApiRequest(url=f'{app.config["SCHEDULES_URI"]}/{username}',
+                                           headers=hed,
+                                           timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger)
         ]
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
-                        CONTACTS_NAME: []}
+                        CONTACTS_NAME: [],
+                        SCHEDULES_NAME: None}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -189,7 +199,8 @@ def create_app():
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
-                               pod_zone=pod_zone), status
+                               pod_zone=pod_zone,
+                               schedules=api_response[SCHEDULES_NAME]), status
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -360,6 +371,115 @@ def create_app():
             return _transaction_failed(
                 token, 'Deposit',
                 f'{request.form.get("amount", "")} is not a valid number')
+
+    @app.route('/schedules', methods=['POST'])
+    def create_schedule():
+        """
+        Asks the scheduled payments service to set up a weekly or monthly
+        payment to one of the user's contacts.
+
+        Fails if:
+        - token is not valid
+        - the amount or the frequency is not valid
+        - the service rejects the schedule (e.g. the recipient is not a contact)
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            # user isn't authenticated
+            app.logger.error('Error scheduling payment: user is not authenticated.')
+            return abort(401)
+        kind = 'Scheduled payment'
+        try:
+            username = decode_token(token)['user']
+            frequency = request.form['frequency']
+            if frequency not in SCHEDULE_FREQUENCIES:
+                raise UserWarning('frequency must be weekly or monthly')
+            amount_cents = _amount_to_cents(request.form['amount'])
+            if amount_cents <= 0:
+                raise UserWarning('amount must be greater than zero')
+            _call_schedules(token, 'post', username,
+                            {'account_num': request.form['account_num'],
+                             'amount': amount_cents,
+                             'frequency': frequency})
+            app.logger.info('Payment scheduled successfully.')
+            return redirect(code=303,
+                            location=url_for('home',
+                                             msg='Scheduled payment created',
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error scheduling payment: %s', str(err))
+            return _transaction_failed(token, kind, status=502)
+        except TransactionError as err:
+            app.logger.error('Error scheduling payment: %s', str(err))
+            return _transaction_failed(token, kind, str(err), err.status_code)
+        except UserWarning as warn:
+            app.logger.error('Error scheduling payment: %s', str(warn))
+            return _transaction_failed(token, kind, str(warn))
+        except (KeyError, ValueError, DecimalException) as input_err:
+            app.logger.error('Error scheduling payment: %s', str(input_err))
+            if isinstance(input_err, KeyError):
+                return _transaction_failed(token, kind, 'missing form field')
+            return _transaction_failed(
+                token, kind,
+                f'{request.form.get("amount", "")} is not a valid number')
+
+    @app.route('/schedules/<schedule_id>/cancel', methods=['POST'])
+    def cancel_schedule(schedule_id):
+        """
+        Asks the scheduled payments service to cancel one of the user's
+        scheduled payments.
+
+        Fails if:
+        - token is not valid
+        - the service has no such schedule for this user
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            # user isn't authenticated
+            app.logger.error('Error cancelling scheduled payment: user is not authenticated.')
+            return abort(401)
+        kind = 'Cancelling the scheduled payment'
+        try:
+            username = decode_token(token)['user']
+            _call_schedules(token, 'delete', username, path=quote(schedule_id, safe=''))
+            app.logger.info('Scheduled payment cancelled.')
+            return redirect(code=303,
+                            location=url_for('home',
+                                             msg='Scheduled payment cancelled',
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error cancelling scheduled payment: %s', str(err))
+            return _transaction_failed(token, kind, status=502)
+        except TransactionError as err:
+            app.logger.error('Error cancelling scheduled payment: %s', str(err))
+            return _transaction_failed(token, kind, str(err), err.status_code)
+
+    def _call_schedules(token, method, username, body=None, path=None):
+        """
+        Calls the scheduled payments service on behalf of the user.
+
+        Params: method - 'post' (create a schedule) or 'delete' (cancel one)
+                body - the JSON body of a new schedule
+                path - the id of the schedule to cancel
+        Raise: TransactionError if the service answers 4xx or 5xx.
+        """
+        url = f'{app.config["SCHEDULES_URI"]}/{username}'
+        if path:
+            url += '/' + path
+        hed = {'Authorization': 'Bearer ' + token,
+               'content-type': 'application/json'}
+        kwargs = {'url': url, 'headers': hed,
+                  'timeout': app.config['BACKEND_TIMEOUT']}
+        if body is not None:
+            kwargs['data'] = jsonify(body).data
+        resp = getattr(requests, method)(**kwargs)
+        try:
+            resp.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
+        except requests.exceptions.HTTPError as http_request_err:
+            status = 400 if resp.status_code < 500 else 502
+            raise TransactionError(resp.text, status) from http_request_err
 
     def _amount_to_cents(user_input):
         """Convert a decimal amount string to an integer number of cents.
@@ -702,6 +822,13 @@ def create_app():
         date = datetime.datetime.strptime(timestamp, app.config['TIMESTAMP_FORMAT'])
         return date.strftime('%b')
 
+    def format_schedule_date(iso_date):
+        """ Format a date such as 2026-04-07 in a human readable way """
+        try:
+            return datetime.date.fromisoformat(iso_date).strftime('%b %d, %Y')
+        except (TypeError, ValueError):
+            return iso_date or ''
+
     def format_currency(int_amount):
         """ Format the input currency in a human readable way """
         if int_amount is None:
@@ -724,6 +851,8 @@ def create_app():
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["CONTACTS_URI"] = 'http://{}/contacts'.format(
         os.environ.get('CONTACTS_API_ADDR'))
+    app.config["SCHEDULES_URI"] = 'http://{}/schedules'.format(
+        os.environ.get('SCHEDULES_API_ADDR'))
     app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
     app.config['LOCAL_ROUTING'] = os.getenv('LOCAL_ROUTING_NUM')
     # timeout in seconds for calls to the backend
@@ -767,6 +896,7 @@ def create_app():
 
     # register formater functions
     app.jinja_env.globals.update(format_currency=format_currency)
+    app.jinja_env.globals.update(format_schedule_date=format_schedule_date)
     app.jinja_env.globals.update(format_timestamp_month=format_timestamp_month)
     app.jinja_env.globals.update(format_timestamp_day=format_timestamp_day)
 

@@ -116,6 +116,102 @@ limitations under the License.
         </div>
       </div>
 
+      <!-- Scheduled (recurring) payments -->
+      <div class="row col-lg-12 mb-4 align-items-start" id="scheduled-payments-section">
+        <div class="col-lg-4">
+          <div class="card">
+            <div class="card-table-header">
+              <div class="row align-items-start">
+                <div class="col">
+                  <h4 class="card-header-title">Schedule recurring payment</h4>
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="schedule-form" class="needs-validation" novalidate="" method="POST" action="/schedules">
+                <label class="text-uppercase text-muted secondary-text mb-2" for="schedule-account">Recipient</label>
+                <select class="custom-select d-block w-100 mb-3" id="schedule-account" name="account_num" required>
+                  {% for account in contacts %}
+                    {% if not account.is_external %}
+                      <option value="{{ account.account_num }}">{{ account.label }} - {{ account.account_num }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <label class="text-uppercase text-muted secondary-text mb-2" for="schedule-amount">Amount</label>
+                <div class="input-group mb-3">
+                  <div class="input-group-prepend mr-2">
+                    <span class="input-group-text"><span class="amount-font material-icons">attach_money</span></span>
+                  </div>
+                  <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="schedule-amount" name="amount" placeholder="0.00" min="0.01" max="500000.00" required>
+                  <div class="invalid-feedback">
+                    Please enter a valid amount with at most two decimal places.
+                  </div>
+                </div>
+                <label class="text-uppercase text-muted secondary-text mb-2" for="schedule-frequency">Frequency</label>
+                <select class="custom-select d-block w-100 mb-3" id="schedule-frequency" name="frequency" required>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <button type="submit" id="schedule-submit" class="btn btn-primary btn-with-padding">Schedule payment</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="card">
+            <div class="card-table-header">
+              <div class="row align-items-start">
+                <div class="col">
+                  <h4 class="card-header-title">Scheduled payments</h4>
+                </div>
+              </div>
+            </div>
+            <div class="table-responsive mb-0" id="scheduled-payments">
+            {% if schedules is none %}
+              <h4 class="card-table-header">Error: Could Not Load Scheduled Payments</h4>
+            {% elif schedules|length == 0 %}
+              <h4 class="card-table-header">No Scheduled Payments</h4>
+            {% else %}
+              <table class="table table-sm table-nowrap card-table">
+                <thead class="text-uppercase">
+                  <tr>
+                    <th><a class="text-transaction-header">Contact</a></th>
+                    <th class="text-right"><a class="text-transaction-header">Amount</a></th>
+                    <th><a class="text-transaction-header">Frequency</a></th>
+                    <th><a class="text-transaction-header">Next payment</a></th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody class="list" id="scheduled-payments-list">
+                {% for s in schedules %}
+                  <tr class="schedule-row" data-schedule-id="{{ s.id }}">
+                    <td class="schedule-contact">
+                      {{ s.label }} <span class="text-muted">{{ s.account_num }}</span>
+                      {% if s.last_status == 'failed' %}
+                        <div class="schedule-failure text-danger">
+                          Last payment ({{ format_schedule_date(s.last_attempt_date) }}) failed{% if s.last_error %}: {{ s.last_error }}{% endif %}
+                        </div>
+                      {% endif %}
+                    </td>
+                    <td class="schedule-amount text-right">{{ format_currency(s.amount) }}</td>
+                    <td class="schedule-frequency">{{ s.frequency|capitalize }}</td>
+                    <td class="schedule-next-date">{{ format_schedule_date(s.next_payment_date) }}</td>
+                    <td class="text-right">
+                      <form method="POST" action="/schedules/{{ s.id }}/cancel">
+                        <button type="submit" class="btn btn-secondary btn-sm schedule-cancel">Cancel</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Transaction History Table -->
       <div class="row col-lg-12 mb-4 align-items-start">
         <div class="col-lg-12">

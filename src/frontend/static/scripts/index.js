@@ -60,6 +60,18 @@ document.addEventListener("DOMContentLoaded", function(event) {
     });
   });
 
+  // Schedule recurring payment form client-side validation
+  var scheduleForm = document.querySelector("#schedule-form");
+  if (scheduleForm) {
+    scheduleForm.addEventListener("submit", function(e) {
+      if(!scheduleForm.checkValidity() || document.querySelector("#schedule-amount").value <= 0.00){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      scheduleForm.classList.add("was-validated");
+    });
+  }
+
   // Handle new account option in Send Payment modal
   document.querySelector("#payment-accounts").addEventListener("change", function(e) {
     RefreshModals();

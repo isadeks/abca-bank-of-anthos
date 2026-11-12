@@ -44,3 +44,39 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE INDEX IF NOT EXISTS idx_contacts_username ON contacts (username);
 
+
+
+-- Recurring payments of the scheduledpayments service. The service creates
+-- these tables itself if they are missing (databases made before they existed).
+CREATE TABLE IF NOT EXISTS scheduled_payments (
+  schedule_id VARCHAR(36) PRIMARY KEY,
+  username VARCHAR(64) NOT NULL,
+  from_account_num VARCHAR(10) NOT NULL,
+  to_account_num VARCHAR(10) NOT NULL,
+  to_label VARCHAR(128) NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  frequency VARCHAR(7) NOT NULL CHECK (frequency IN ('weekly', 'monthly')),
+  anchor_day INTEGER NOT NULL CHECK (anchor_day BETWEEN 1 AND 31),
+  next_payment_date DATE NOT NULL,
+  status VARCHAR(9) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'cancelled')),
+  last_status VARCHAR(9),
+  last_error TEXT,
+  last_attempt_date DATE,
+  created_at TIMESTAMPTZ NOT NULL,
+  FOREIGN KEY (username) REFERENCES users(username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_payments_username ON scheduled_payments (username);
+CREATE INDEX IF NOT EXISTS idx_scheduled_payments_due ON scheduled_payments (status, next_payment_date);
+
+-- One row per (schedule, due date): the primary key is what stops a due date
+-- from being paid twice.
+CREATE TABLE IF NOT EXISTS scheduled_payment_attempts (
+  schedule_id VARCHAR(36) NOT NULL REFERENCES scheduled_payments(schedule_id),
+  due_date DATE NOT NULL,
+  status VARCHAR(9) NOT NULL CHECK (status IN ('pending', 'succeeded', 'failed')),
+  error TEXT,
+  claimed_at TIMESTAMPTZ NOT NULL,
+  completed_at TIMESTAMPTZ,
+  PRIMARY KEY (schedule_id, due_date)
+);
