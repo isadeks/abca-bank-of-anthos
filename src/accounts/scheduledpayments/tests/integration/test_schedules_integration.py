@@ -20,14 +20,24 @@ schema, ownership, the double-payment protection and the runner.
 
 import datetime
 import logging
+import os
+import sys
 import threading
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
+# Import the service's modules the way production does (`from db import ScheduleDb`).
+SERVICE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if SERVICE_DIR not in sys.path:
+    sys.path.insert(0, SERVICE_DIR)
+
+# pylint: disable=wrong-import-position
 import db
+from db import ScheduleDb
 from signing import PaymentTokenSigner
 from worker import PaymentRunner, payment_id
 
@@ -36,6 +46,67 @@ D = datetime.date
 LEASE = datetime.timedelta(minutes=5)
 GIVE_UP = datetime.timedelta(minutes=50)
 LOCAL_ROUTING_NUM = '883745000'
+
+
+@pytest.fixture(scope='session')
+def accounts_db_uri():
+    """Connection string of the real accounts-db."""
+    uri = os.environ.get('ACCOUNTS_DB_URI')
+    if not uri:
+        pytest.fail('ACCOUNTS_DB_URI must point at the accounts-db database')
+    return uri
+
+
+@pytest.fixture
+def schedule_db(accounts_db_uri):
+    """ScheduleDb on the real database, as production constructs it."""
+    schedule_db = ScheduleDb(accounts_db_uri)
+    schedule_db.create_tables()
+    return schedule_db
+
+
+def _new_user(schedule_db):
+    username = 'it_' + uuid.uuid4().hex[:10]
+    accountid = str(int(uuid.uuid4().int % 9_000_000_000) + 1_000_000_000)
+    with schedule_db.engine.begin() as conn:
+        conn.execute(
+            text(
+                'INSERT INTO users (accountid, username, passhash, firstname, lastname, '
+                'birthday, timezone, address, state, zip, ssn) VALUES '
+                "(:acct, :user, :hash, 'Integration', 'Test', '1990-02-03', '-5', "
+                "'1 Test Street', 'NY', '10004', '123-45-6789')"
+            ),
+            acct=accountid, user=username, hash=b'not-a-real-hash')
+    return username, accountid
+
+
+def _drop_user(schedule_db, username):
+    with schedule_db.engine.begin() as conn:
+        conn.execute(text(
+            'DELETE FROM scheduled_payment_attempts WHERE schedule_id IN '
+            '(SELECT schedule_id FROM scheduled_payments WHERE username = :u)'),
+            u=username)
+        conn.execute(text('DELETE FROM scheduled_payments WHERE username = :u'), u=username)
+        conn.execute(text('DELETE FROM users WHERE username = :u'), u=username)
+
+
+@pytest.fixture
+def user(schedule_db):
+    """Insert a user (schedules reference users by username) and clean up afterwards.
+
+    Returns the username and account id.
+    """
+    username, accountid = _new_user(schedule_db)
+    yield username, accountid
+    _drop_user(schedule_db, username)
+
+
+@pytest.fixture
+def other_user(schedule_db):
+    """A second user, to check that schedules stay private."""
+    username, accountid = _new_user(schedule_db)
+    yield username, accountid
+    _drop_user(schedule_db, username)
 
 
 def at(day, hour=9):
