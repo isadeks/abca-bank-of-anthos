@@ -17,14 +17,11 @@ Userservice manages user account creation, user login, and related tasks
 """
 
 import atexit
-from datetime import datetime, timedelta
 import logging
 import os
 import sys
 import re
 
-import bcrypt
-import jwt
 from flask import Flask, jsonify, request
 import bleach
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
@@ -37,6 +34,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
+import cognito_auth
 from db import UserDb
 from trace_logging import add_trace_context
 
@@ -70,7 +68,9 @@ def create_app():
 
         Fails if that username already exists.
 
-        Generates a unique accountid.
+        Generates a unique accountid, creates the user in the Cognito user
+        pool (which owns the credentials) and stores the profile and the
+        accountid in the accounts database.
 
         request fields:
         - username
@@ -93,19 +93,29 @@ def create_app():
             if users_db.get_user(req['username']) is not None:
                 raise NameError('user {} already exists'.format(req['username']))
 
-            # Create password hash with salt
-            app.logger.debug("Creating password hash.")
-            password = req['password']
-            salt = bcrypt.gensalt()
-            passhash = bcrypt.hashpw(password.encode('utf-8'), salt)
+            if auth is None:
+                app.logger.error("Error creating new user: Cognito is not configured")
+                return 'authentication is not configured', 500
 
             accountid = users_db.generate_accountid()
 
-            # Create user data to be added to the database
+            # Cognito owns the credentials: create the user in the user pool,
+            # with the account id and display name as attributes (token claims)
+            app.logger.debug("Creating the user in Cognito.")
+            auth.create_user(
+                req['username'],
+                req['password'],
+                accountid,
+                '{} {}'.format(req['firstname'], req['lastname']),
+            )
+
+            # The profile stays in the accounts database. The password hash
+            # column is required by the schema but no longer used: Cognito
+            # holds the only copy of the credentials.
             user_data = {
                 'accountid': accountid,
                 'username': req['username'],
-                'passhash': passhash,
+                'passhash': b'',
                 'firstname': req['firstname'],
                 'lastname': req['lastname'],
                 'birthday': req['birthday'],
@@ -115,17 +125,24 @@ def create_app():
                 'zip': req['zip'],
                 'ssn': req['ssn'],
             }
-            # Add user_data to database
             app.logger.debug("Adding user to the database")
-            users_db.add_user(user_data)
+            try:
+                users_db.add_user(user_data)
+            except SQLAlchemyError:
+                # Do not leave a Cognito user without a profile
+                auth.delete_user(req['username'])
+                raise
             app.logger.info("Successfully created user.")
 
         except UserWarning as warn:
             app.logger.error("Error creating new user: %s", str(warn))
             return str(warn), 400
-        except NameError as err:
+        except (NameError, cognito_auth.UserExists) as err:
             app.logger.error("Error creating new user: %s", str(err))
             return str(err), 409
+        except cognito_auth.InvalidPassword as err:
+            app.logger.error("Error creating new user: %s", str(err))
+            return str(err), 400
         except SQLAlchemyError as err:
             app.logger.error("Error creating new user: %s", str(err))
             return 'failed to create user', 500
@@ -162,55 +179,35 @@ def create_app():
 
     @app.route('/login', methods=['GET'])
     def login():
-        """Login a user and return a JWT token
+        """Login a user through Cognito and return its ID token
 
-        Fails if username doesn't exist or password doesn't match hash
+        Fails if username doesn't exist or the password is wrong
 
-        token expiry time determined by environment variable
+        The token's lifetime is configured on the Cognito app client.
 
         request fields:
         - username
         - password
         """
         app.logger.debug('Sanitizing login input.')
-        username = bleach.clean(request.args.get('username'))
-        password = bleach.clean(request.args.get('password'))
+        username = bleach.clean(request.args.get('username') or '')
+        password = bleach.clean(request.args.get('password') or '')
 
-        # Get user data
+        if auth is None:
+            app.logger.error('Error logging in: Cognito is not configured')
+            return 'authentication is not configured', 500
+
         try:
-            app.logger.debug('Getting the user data.')
-            user = users_db.get_user(username)
-            if user is None:
-                raise LookupError('user {} does not exist'.format(username))
-
-            # Validate the password
-            app.logger.debug('Validating the password.')
-            if not bcrypt.checkpw(password.encode('utf-8'), user['passhash']):
-                raise PermissionError('invalid login')
-
-            full_name = '{} {}'.format(user['firstname'], user['lastname'])
-            exp_time = datetime.utcnow() + timedelta(seconds=app.config['EXPIRY_SECONDS'])
-            payload = {
-                'user': username,
-                'acct': user['accountid'],
-                'name': full_name,
-                'iat': datetime.utcnow(),
-                'exp': exp_time,
-            }
-            app.logger.debug('Creating jwt token.')
-            token = jwt.encode(payload, app.config['PRIVATE_KEY'], algorithm='RS256')
+            app.logger.debug('Authenticating against Cognito.')
+            token = auth.authenticate(username, password)
             app.logger.info('Login Successful.')
             return jsonify({'token': token}), 200
-
-        except LookupError as err:
+        except cognito_auth.UnknownUser as err:
             app.logger.error('Error logging in: %s', str(err))
             return str(err), 404
-        except PermissionError as err:
+        except cognito_auth.InvalidCredentials as err:
             app.logger.error('Error logging in: %s', str(err))
             return str(err), 401
-        except SQLAlchemyError as err:
-            app.logger.error('Error logging in: %s', str(err))
-            return 'failed to retrieve user information', 500
 
     @atexit.register
     def _shutdown():
@@ -243,9 +240,15 @@ def create_app():
         app.logger.info("🚫 Tracing disabled.")
 
     app.config['VERSION'] = os.environ.get('VERSION')
-    app.config['EXPIRY_SECONDS'] = int(os.environ.get('TOKEN_EXPIRY_SECONDS'))
-    app.config['PRIVATE_KEY'] = open(os.environ.get('PRIV_KEY_PATH'), 'r').read()
-    app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
+
+    # Cognito user pool that owns the credentials and issues the ID token
+    # (COGNITO_USER_POOL_ID, COGNITO_APP_CLIENT_ID, COGNITO_REGION)
+    try:
+        auth = cognito_auth.CognitoAuth.from_env()
+    except KeyError as err:
+        # Keep the service up (probes, version) but refuse logins and signups
+        auth = None
+        app.logger.critical("Cognito is not configured: %s is not set", err)
 
     # Configure database connection
     try:
