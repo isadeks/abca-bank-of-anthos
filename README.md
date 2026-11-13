@@ -13,6 +13,12 @@ If you are using Bank of Anthos, please ★Star this repository to show your int
 
 **Note to Googlers:** Please fill out the form at [go/bank-of-anthos-form](https://goto2.corp.google.com/bank-of-anthos-form).
 
+## About this project
+
+Bank of Anthos is a demo bank built as a set of small services: a Python web frontend, three Python/Java backend services for accounts, contacts and the ledger, and two PostgreSQL databases, plus a load generator that simulates traffic. It is meant as a realistic, easy-to-read example for learning and demonstrating how to build, deploy and observe microservices on Kubernetes. All accounts and money are artificial. The [service architecture](#service-architecture) below describes each component, and the code for every service lives under [`src/`](/src).
+
+This fork is maintained by the ABCA team.
+
 ## Screenshots
 
 | Sign in                                                                                                        | Home                                                                                                    |
