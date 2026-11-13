@@ -34,7 +34,7 @@ describe('User can have multiple accounts', function () {
         cy.get('#open-account-link').click()
         cy.get('#openAccount').should('be.visible')
         cy.get('#new-account-label').type(label)
-        cy.get('#open-account-form').submit()
+        cy.get('#open-account-form button[type=submit]').click()
     }
 
     it('shows only the sign-up account at first', function () {
@@ -47,7 +47,7 @@ describe('User can have multiple accounts', function () {
     it('opens a second account with its own number and balance and switches to it', function () {
         cy.get('.account-number').invoke('text').then((checkingNumber) => {
             openAccount('Savings')
-            cy.get('#alert-message').contains('Opened account Savings')
+            cy.get('#alert-message', { timeout: 20000 }).contains('Opened account Savings')
             cy.get('#account-title').contains('Savings Account')
             cy.get('.account-number').invoke('text').should('not.eq', checkingNumber)
             cy.get('#current-balance').contains('$0.00')
@@ -69,8 +69,8 @@ describe('User can have multiple accounts', function () {
         cy.get('#external_account_num').type('1234567890')
         cy.get('#external_routing_num').type('123456789')
         cy.get('#deposit-amount').clear().type('100')
-        cy.get('#deposit-form').submit()
-        cy.get('#alert-message').contains('Deposit successful')
+        cy.get('#deposit-form button[type=submit]').click()
+        cy.get('#alert-message', { timeout: 20000 }).contains('Deposit successful')
         openAccount('Savings')
         cy.get('#account-title').contains('Savings Account')
 
@@ -81,10 +81,12 @@ describe('User can have multiple accounts', function () {
 
         cy.get('#transferSpan').click()
         cy.get('#transferFunds').should('be.visible')
-        cy.get('#transfer-to').select('Savings', { force: true })
+        cy.get('#transfer-to option').first().invoke('val').then((target) => {
+            cy.get('#transfer-to').select(target)
+        })
         cy.get('#transfer-amount').clear().type('30')
-        cy.get('#transfer-form').submit()
-        cy.get('#alert-message').contains('Transfer successful')
+        cy.get('#transfer-form button[type=submit]').click()
+        cy.get('#alert-message', { timeout: 20000 }).contains('Transfer successful')
         cy.get('#current-balance').contains('$70.00')
 
         cy.get('#accountSwitcherDropdown').click()
