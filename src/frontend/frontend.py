@@ -50,6 +50,9 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+ACCOUNTS_NAME = "accounts"
+# Label of the account every user gets at sign-up
+PRIMARY_ACCOUNT_LABEL = "Checking"
 
 
 class TransactionError(UserWarning):
@@ -150,15 +153,22 @@ def create_app():
                     api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get the user's accounts
+            ApiCall(display_name=ACCOUNTS_NAME,
+                    api_request=ApiRequest(url=f'{app.config["ACCOUNTS_URI"]}/{username}',
+                                           headers=hed,
+                                           timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger)
         ]
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
-                        CONTACTS_NAME: []}
+                        CONTACTS_NAME: [],
+                        ACCOUNTS_NAME: None}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -171,12 +181,25 @@ def create_app():
                     api_call = future_to_api_call[future]
                     api_response[api_call.display_name] = future.result().json()
 
+        accounts = api_response[ACCOUNTS_NAME]
+        active_account_label = PRIMARY_ACCOUNT_LABEL
+        # Transfers between the user's own accounts are labelled like contacts
+        labelled_accounts = list(api_response[CONTACTS_NAME])
+        for account in accounts or []:
+            if account['accountid'] == account_id:
+                active_account_label = account['label']
+            else:
+                labelled_accounts.append({'account_num': account['accountid'],
+                                          'label': account['label']})
+
         _populate_contact_labels(account_id,
                                  api_response[TRANSACTION_LIST_NAME],
-                                 api_response[CONTACTS_NAME])
+                                 labelled_accounts)
 
         return render_template('index.html',
                                account_id=account_id,
+                               accounts=accounts,
+                               active_account_label=active_account_label,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
                                cluster_name=cluster_name,
@@ -292,6 +315,165 @@ def create_app():
             return _transaction_failed(
                 token, 'Payment',
                 f'{request.form.get("amount", "")} is not a valid number')
+
+    @app.route('/transfer', methods=['POST'])
+    def transfer():
+        """
+        Moves money from the current account to another of the user's accounts
+
+        Fails if:
+        - token is not valid
+        - the target is not one of the user's accounts, or is the current one
+        - response code from ledgerwriter is not 201
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            # user isn't authenticated
+            app.logger.error('Error submitting transfer: user is not authenticated.')
+            return abort(401)
+        try:
+            token_data = decode_token(token)
+            account_id = token_data['acct']
+            target = request.form['to_account']
+            amount_cents = _amount_to_cents(request.form['amount'])
+            if target == account_id:
+                raise UserWarning('choose a different account to transfer to')
+            if target not in [a['accountid'] for a in _get_accounts(token, token_data['user'])]:
+                raise UserWarning('the account to transfer to is not one of your accounts')
+            transaction_data = {"fromAccountNum": account_id,
+                                "fromRoutingNum": app.config['LOCAL_ROUTING'],
+                                "toAccountNum": target,
+                                "toRoutingNum": app.config['LOCAL_ROUTING'],
+                                "amount": amount_cents,
+                                "uuid": request.form['uuid']}
+            _submit_transaction(transaction_data)
+            app.logger.info('Transfer between own accounts submitted successfully.')
+            return redirect(code=303,
+                            location=url_for('home',
+                                             msg='Transfer successful',
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error submitting transfer: %s', str(err))
+            return _transaction_failed(token, 'Transfer', status=502)
+        except TransactionError as err:
+            app.logger.error('Error submitting transfer: %s', str(err))
+            return _transaction_failed(token, 'Transfer', str(err), err.status_code)
+        except UserWarning as warn:
+            app.logger.error('Error submitting transfer: %s', str(warn))
+            return _transaction_failed(token, 'Transfer', str(warn))
+        except (KeyError, ValueError, DecimalException) as input_err:
+            app.logger.error('Error submitting transfer: %s', str(input_err))
+            if isinstance(input_err, KeyError):
+                return _transaction_failed(token, 'Transfer', 'missing form field')
+            return _transaction_failed(
+                token, 'Transfer',
+                f'{request.form.get("amount", "")} is not a valid number')
+
+    def _get_accounts(token, username):
+        """Fetch the accounts of the user from userservice.
+
+        Raises: requests.exceptions.RequestException if the call fails
+        """
+        resp = requests.get(url=f'{app.config["ACCOUNTS_URI"]}/{username}',
+                            headers={'Authorization': 'Bearer ' + token},
+                            timeout=app.config['BACKEND_TIMEOUT'])
+        resp.raise_for_status()
+        return resp.json()
+
+    def _switch_to_account(token, username, account_id, message):
+        """
+        Redirects to the home page with a token that acts on the given account.
+
+        Raises: requests.exceptions.RequestException if userservice refuses
+        """
+        resp = requests.post(url=f'{app.config["ACCOUNTS_URI"]}/{username}/token',
+                             data={'accountid': account_id},
+                             headers={'Authorization': 'Bearer ' + token},
+                             timeout=app.config['BACKEND_TIMEOUT'])
+        resp.raise_for_status()
+        new_token = resp.json()['token']
+        # the new token expires with the one it replaces
+        now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+        max_age = max(int(decode_token(new_token)['exp'] - now), 0)
+        response = redirect(code=303,
+                            location=url_for('home',
+                                             msg=message,
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+        response.set_cookie(app.config['TOKEN_NAME'], new_token, max_age=max_age)
+        return response
+
+    def _account_failed(token, reason, status=400):
+        """Renders the home page with an error about opening or switching accounts"""
+        return _render_home(token, message=reason, is_error=True, status=status)
+
+    @app.route('/accounts', methods=['POST'])
+    def open_account():
+        """
+        Opens an additional account for the user and switches to it
+
+        Fails if:
+        - token is not valid
+        - userservice rejects the label (invalid, duplicate, too many accounts)
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error opening account: user is not authenticated.')
+            return abort(401)
+        username = decode_token(token)['user']
+        label = request.form.get('label', '')
+        try:
+            resp = requests.post(url=f'{app.config["ACCOUNTS_URI"]}/{username}',
+                                 data={'label': label},
+                                 headers={'Authorization': 'Bearer ' + token},
+                                 timeout=app.config['BACKEND_TIMEOUT'])
+            if resp.status_code >= 400:
+                app.logger.error('Error opening account: %s', resp.text)
+                status = 400 if resp.status_code < 500 else 502
+                return _account_failed(token, f'Could not open account: {resp.text}', status)
+            account = resp.json()
+            app.logger.info('Opened a new account.')
+            message = f'Opened account {account["label"]} ({account["accountid"]})'
+            try:
+                return _switch_to_account(token, username, account['accountid'], message)
+            except requests.exceptions.RequestException as err:
+                # the account exists; the user can switch to it from the header
+                app.logger.error('Error switching to the new account: %s', str(err))
+                return redirect(code=303,
+                                location=url_for('home',
+                                                 msg=message,
+                                                 _external=True,
+                                                 _scheme=app.config['SCHEME']))
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error opening account: %s', str(err))
+            return _account_failed(token, 'Could not open account', 502)
+
+    @app.route('/accounts/switch', methods=['POST'])
+    def switch_account():
+        """
+        Switches the account that the home page, deposits and payments use
+
+        Fails if:
+        - token is not valid
+        - the account is not one of the user's accounts
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error switching account: user is not authenticated.')
+            return abort(401)
+        username = decode_token(token)['user']
+        account_id = request.form.get('accountid', '')
+        try:
+            return _switch_to_account(token, username, account_id, 'Switched account')
+        except requests.exceptions.HTTPError as err:
+            app.logger.error('Error switching account: %s', str(err))
+            status = 400 if err.response is not None and err.response.status_code < 500 else 502
+            return _account_failed(token, 'Could not switch account', status)
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error switching account: %s', str(err))
+            return _account_failed(token, 'Could not switch account', 502)
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
@@ -720,6 +902,8 @@ def create_app():
         os.environ.get('BALANCES_API_ADDR'))
     app.config["HISTORY_URI"] = 'http://{}/transactions'.format(
         os.environ.get('HISTORY_API_ADDR'))
+    app.config["ACCOUNTS_URI"] = 'http://{}/accounts'.format(
+        os.environ.get('USERSERVICE_API_ADDR'))
     app.config["LOGIN_URI"] = 'http://{}/login'.format(
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["CONTACTS_URI"] = 'http://{}/contacts'.format(

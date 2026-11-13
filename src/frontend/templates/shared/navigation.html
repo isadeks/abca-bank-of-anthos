@@ -17,6 +17,25 @@
           </button>
           <div class="justify-content-end collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav">
+            {% if accounts is defined and accounts is not none %}
+              <li class="nav-item dropdown" id="account-switcher">
+                <a class="nav-link dropdown-toggle" href="#" id="accountSwitcherDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                  <span class="material-icons align-middle">account_balance_wallet</span>
+                  <span id="active-account-label">{{ active_account_label }}</span>
+                </a>
+                <div class="dropdown-menu" aria-labelledby="accountSwitcherDropdown">
+                  <form id="switch-account-form" method="POST" action="/accounts/switch">
+                  {% for account in accounts %}
+                    <button type="submit" name="accountid" value="{{ account.accountid }}" class="dropdown-item account-switch-option{% if account.accountid == account_id %} active{% endif %}">
+                      {{ account.label }} - {{ account.accountid }}
+                    </button>
+                  {% endfor %}
+                  </form>
+                  <div class="dropdown-divider"></div>
+                  <a class="dropdown-item" id="open-account-link" href="#" data-toggle="modal" data-target="#openAccount" data-keyboard="false" data-backdrop="static">Open a new account</a>
+                </div>
+              </li>
+            {% endif %}
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" id="accountDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                   <span>

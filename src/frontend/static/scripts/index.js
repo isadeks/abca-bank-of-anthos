@@ -71,6 +71,37 @@ document.addEventListener("DOMContentLoaded", function(event) {
   });
 
 
+  // Open account modal client-side validation (only on pages that have it)
+  var openAccountForm = document.querySelector("#open-account-form");
+  if (openAccountForm) {
+    openAccountForm.addEventListener("submit", function(e) {
+      if(!openAccountForm.checkValidity()){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      openAccountForm.classList.add("was-validated");
+    });
+  }
+
+  // Transfer modal client-side validation (only shown with two or more accounts)
+  var transferForm = document.querySelector("#transfer-form");
+  if (transferForm) {
+    transferForm.addEventListener("submit", function(e) {
+      if(!transferForm.checkValidity() || document.querySelector("#transfer-amount").value <= 0.00){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      transferForm.classList.add("was-validated");
+    });
+    document.querySelectorAll(".transfer-cancel").forEach((transferCancel) => {
+      transferCancel.addEventListener("click", function () {
+        transferForm.reset();
+        transferForm.classList.remove("was-validated");
+        RefreshModals();
+      });
+    });
+  }
+
   function uuidv4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -96,6 +127,10 @@ document.addEventListener("DOMContentLoaded", function(event) {
       // generate new uuids
       document.querySelector("#payment-uuid").value = uuidv4();
       document.querySelector("#deposit-uuid").value = uuidv4();
+      var transferUuid = document.querySelector("#transfer-uuid");
+      if (transferUuid) {
+        transferUuid.value = uuidv4();
+      }
   }
   RefreshModals();
 });
