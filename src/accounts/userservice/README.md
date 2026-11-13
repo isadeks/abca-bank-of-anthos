@@ -12,7 +12,15 @@ Implemented in Python with Flask.
 | `/login`            | GET   |       |  Returns a JWT if authentication is successful.                  |
 | `/ready`            | GET   |       |  Readiness probe endpoint.                                       |
 | `/users`            | POST  |       |  Validates and creates a new user record.                        |
+| `/accounts/<user>`  | GET   | JWT   |  Lists the user's accounts (the sign-up "Checking" account first). |
+| `/accounts/<user>`  | POST  | JWT   |  Opens an additional account (`label`, at most 5 accounts per user). |
+| `/accounts/<user>/token` | POST | JWT |  Returns a JWT acting on another of the user's accounts (`accountid`); it expires with the presented one. |
 | `/version`          | GET   |       |  Returns the contents of `$VERSION`                              |
+
+A user's account number is the `acct` claim of the JWT, so the ledger services
+act on whichever account the token names. The account created at sign-up is in the
+`users` table; additional accounts are rows of the `accounts` table (created at
+startup if the database predates it).
 
 ### Environment Variables
 

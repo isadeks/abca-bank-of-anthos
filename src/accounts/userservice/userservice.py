@@ -40,6 +40,13 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from db import UserDb
 from trace_logging import add_trace_context
 
+# Label of the account every user gets at sign-up
+PRIMARY_ACCOUNT_LABEL = 'Checking'
+# Most accounts (sign-up account included) a user may have
+MAX_ACCOUNTS = 5
+# Same rule as contact labels: 1-30 alphanumerics and spaces, not starting with a space
+ACCOUNT_LABEL_PATTERN = re.compile(r'\A[0-9a-zA-Z][0-9a-zA-Z ]{0,29}\Z')
+
 def create_app():
     """Flask application factory to create instances
     of the Userservice Flask App
@@ -188,17 +195,10 @@ def create_app():
             if not bcrypt.checkpw(password.encode('utf-8'), user['passhash']):
                 raise PermissionError('invalid login')
 
-            full_name = '{} {}'.format(user['firstname'], user['lastname'])
-            exp_time = datetime.utcnow() + timedelta(seconds=app.config['EXPIRY_SECONDS'])
-            payload = {
-                'user': username,
-                'acct': user['accountid'],
-                'name': full_name,
-                'iat': datetime.utcnow(),
-                'exp': exp_time,
-            }
+            now = datetime.utcnow()
+            exp_time = now + timedelta(seconds=app.config['EXPIRY_SECONDS'])
             app.logger.debug('Creating jwt token.')
-            token = jwt.encode(payload, app.config['PRIVATE_KEY'], algorithm='RS256')
+            token = __make_token(user, user['accountid'], now, exp_time)
             app.logger.info('Login Successful.')
             return jsonify({'token': token}), 200
 
@@ -211,6 +211,138 @@ def create_app():
         except SQLAlchemyError as err:
             app.logger.error('Error logging in: %s', str(err))
             return 'failed to retrieve user information', 500
+
+    def __make_token(user, accountid, issued_at, expires_at):
+        """Sign a token for a user acting on one of their accounts"""
+        payload = {
+            'user': user['username'],
+            'acct': accountid,
+            'name': '{} {}'.format(user['firstname'], user['lastname']),
+            'iat': issued_at,
+            'exp': expires_at,
+        }
+        return jwt.encode(payload, app.config['PRIVATE_KEY'], algorithm='RS256')
+
+    def __authenticate(username):
+        """Verify the bearer token of the request and that it belongs to username.
+
+        Return: the token claims
+        Raises: PermissionError if the token is missing, invalid or someone else's
+        """
+        auth_header = request.headers.get('Authorization')
+        if auth_header is None or not auth_header.startswith('Bearer '):
+            raise PermissionError('authentication denied')
+        try:
+            claims = jwt.decode(jwt=auth_header.split('Bearer ')[1],
+                                key=app.config['PUBLIC_KEY'],
+                                algorithms='RS256')
+        except jwt.exceptions.InvalidTokenError as err:
+            raise PermissionError('authentication denied') from err
+        if claims.get('user') != username:
+            raise PermissionError('authentication denied')
+        return claims
+
+    def __list_accounts(user):
+        """All accounts of a user, the sign-up account first"""
+        accounts = [{'accountid': user['accountid'],
+                     'label': PRIMARY_ACCOUNT_LABEL,
+                     'is_primary': True}]
+        for account in users_db.get_accounts(user['username']):
+            accounts.append({'accountid': account['accountid'],
+                             'label': account['label'],
+                             'is_primary': False})
+        return accounts
+
+    @app.route('/accounts/<username>', methods=['GET'])
+    def get_accounts(username):
+        """List the accounts of a user
+
+        Requires a bearer token of that user.
+        Return: a JSON list of {accountid, label, is_primary}, sign-up account first
+        """
+        try:
+            __authenticate(username)
+            user = users_db.get_user(username)
+            if user is None:
+                raise LookupError('user {} does not exist'.format(username))
+            return jsonify(__list_accounts(user)), 200
+        except PermissionError as err:
+            return str(err), 401
+        except LookupError as err:
+            return str(err), 404
+        except SQLAlchemyError as err:
+            app.logger.error('Error listing accounts: %s', str(err))
+            return 'failed to retrieve accounts', 500
+
+    @app.route('/accounts/<username>', methods=['POST'])
+    def create_account(username):
+        """Open an additional account for a user
+
+        Requires a bearer token of that user. Generates a unique accountid.
+
+        request fields:
+        - label
+        """
+        try:
+            __authenticate(username)
+            label = bleach.clean(request.form.get('label', '')).strip()
+            if not ACCOUNT_LABEL_PATTERN.match(label):
+                raise UserWarning('invalid account label: use 1-30 letters, '
+                                  'numbers and spaces')
+            user = users_db.get_user(username)
+            if user is None:
+                raise LookupError('user {} does not exist'.format(username))
+            accounts = __list_accounts(user)
+            if len(accounts) >= MAX_ACCOUNTS:
+                raise UserWarning('at most {} accounts are allowed'.format(MAX_ACCOUNTS))
+            if any(a['label'].lower() == label.lower() for a in accounts):
+                raise NameError('an account with that label already exists')
+            accountid = users_db.generate_accountid()
+            users_db.add_account(username, accountid, label)
+            app.logger.info('Opened a new account.')
+            return jsonify({'accountid': accountid,
+                            'label': label,
+                            'is_primary': False}), 201
+        except PermissionError as err:
+            return str(err), 401
+        except UserWarning as warn:
+            return str(warn), 400
+        except LookupError as err:
+            return str(err), 404
+        except NameError as err:
+            return str(err), 409
+        except SQLAlchemyError as err:
+            app.logger.error('Error opening account: %s', str(err))
+            return 'failed to open account', 500
+
+    @app.route('/accounts/<username>/token', methods=['POST'])
+    def switch_account(username):
+        """Issue a token that acts on another of the user's accounts
+
+        Requires a bearer token of that user. The new token expires when the
+        presented one does, so switching does not extend the session.
+
+        request fields:
+        - accountid
+        """
+        try:
+            claims = __authenticate(username)
+            accountid = request.form.get('accountid', '')
+            user = users_db.get_user(username)
+            if user is None:
+                raise LookupError('user {} does not exist'.format(username))
+            if not any(a['accountid'] == accountid for a in __list_accounts(user)):
+                raise LookupError('account {} does not exist'.format(accountid))
+            token = __make_token(user, accountid,
+                                 claims['iat'], claims['exp'])
+            return jsonify({'token': token}), 200
+        except PermissionError as err:
+            return str(err), 401
+        except LookupError as err:
+            return str(err), 404
+        except SQLAlchemyError as err:
+            app.logger.error('Error switching account: %s', str(err))
+            return 'failed to switch account', 500
 
     @atexit.register
     def _shutdown():

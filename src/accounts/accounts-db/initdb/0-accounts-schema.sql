@@ -44,3 +44,12 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE INDEX IF NOT EXISTS idx_contacts_username ON contacts (username);
 
+
+
+CREATE TABLE IF NOT EXISTS accounts (
+  accountid CHAR(10) PRIMARY KEY,
+  username VARCHAR(64) NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+  label VARCHAR(30) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts (username);

@@ -18,7 +18,8 @@ db manages interactions with the underlying database
 
 import logging
 import random
-from sqlalchemy import create_engine, MetaData, Table, Column, String, Date, LargeBinary
+from sqlalchemy import (create_engine, MetaData, Table, Column, ForeignKey,
+                        String, Date, LargeBinary)
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 class UserDb:
@@ -30,9 +31,10 @@ class UserDb:
     def __init__(self, uri, logger=logging):
         self.engine = create_engine(uri)
         self.logger = logger
+        metadata = MetaData()
         self.users_table = Table(
             'users',
-            MetaData(),
+            metadata,
             Column('accountid', String, primary_key=True),
             Column('username', String, unique=True, nullable=False),
             Column('passhash', LargeBinary, nullable=False),
@@ -45,6 +47,18 @@ class UserDb:
             Column('zip', String, nullable=False),
             Column('ssn', String, nullable=False),
         )
+        # Additional accounts of a user. The account created at sign-up lives
+        # in the users table and is not repeated here.
+        self.accounts_table = Table(
+            'accounts',
+            metadata,
+            Column('accountid', String, primary_key=True),
+            Column('username', String, ForeignKey('users.username', ondelete='CASCADE'),
+                   nullable=False),
+            Column('label', String, nullable=False),
+        )
+        # Databases created before multiple accounts existed lack this table
+        self.accounts_table.create(self.engine, checkfirst=True)
 
         # Set up tracing autoinstrumentation for sqlalchemy
         SQLAlchemyInstrumentor().instrument(
@@ -77,6 +91,12 @@ class UserDb:
                 )
                 self.logger.debug('QUERY: %s', str(statement))
                 result = conn.execute(statement).first()
+                if result is None:
+                    statement = self.accounts_table.select().where(
+                        self.accounts_table.c.accountid == accountid
+                    )
+                    self.logger.debug('QUERY: %s', str(statement))
+                    result = conn.execute(statement).first()
                 # If there already exists an account, try again.
                 if result is not None:
                     accountid = None
@@ -99,3 +119,32 @@ class UserDb:
             result = conn.execute(statement).first()
         self.logger.debug('RESULT: fetched user data for %s', username)
         return dict(result._mapping) if result is not None else None
+
+    def get_accounts(self, username):
+        """Get the additional accounts (not the sign-up account) of a user.
+
+        Params: username - the username of the user
+        Return: a list of {'accountid': accountid, 'label': label} dicts,
+                oldest first
+        Raises: SQLAlchemyError if there was an issue with the database
+        """
+        statement = self.accounts_table.select().where(
+            self.accounts_table.c.username == username
+        ).order_by(self.accounts_table.c.accountid)
+        self.logger.debug('QUERY: %s', str(statement))
+        with self.engine.connect() as conn:
+            result = conn.execute(statement).fetchall()
+        self.logger.debug('RESULT: fetched accounts of %s', username)
+        return [{'accountid': row._mapping['accountid'], 'label': row._mapping['label']}
+                for row in result]
+
+    def add_account(self, username, accountid, label):
+        """Add an additional account to a user.
+
+        Raises: SQLAlchemyError if there was an issue with the database
+        """
+        statement = self.accounts_table.insert().values(
+            accountid=accountid, username=username, label=label)
+        self.logger.debug('QUERY: %s', str(statement))
+        with self.engine.begin() as conn:
+            conn.execute(statement)
