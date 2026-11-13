@@ -28,7 +28,9 @@ from time import sleep
 import requests
 from requests.exceptions import HTTPError, RequestException
 import jwt
-from flask import Flask, abort, jsonify, make_response, redirect, \
+from urllib.parse import urlsplit
+
+from flask import Flask, abort, g, jsonify, make_response, redirect, \
     render_template, request, url_for
 
 from opentelemetry import trace
@@ -45,8 +47,11 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 from api_call import ApiCall, ApiRequest
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
+from translations import DEFAULT_LANGUAGE, LANGUAGES, normalize_language, \
+    translate
 
 # Local constants
+LANGUAGE_COOKIE = "language"
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
@@ -764,6 +769,38 @@ def create_app():
             pod_zone = str(req.text.split("/")[3])
     except (RequestException, HTTPError) as err:
         app.logger.warning("Unable to retrieve zone from metadata server %s.", metadata_server)
+
+    @app.before_request
+    def select_language():
+        """Uses the language chosen with the language cookie, else English"""
+        g.language = normalize_language(
+            request.cookies.get(LANGUAGE_COOKIE, DEFAULT_LANGUAGE))
+
+    @app.route('/language/<code>', methods=['GET'])
+    def set_language(code):
+        """
+        Remembers the language in a cookie and goes back to the page the
+        user came from (a path on this site), or to the start page.
+        """
+        if code not in LANGUAGES:
+            abort(404)
+        target = urlsplit(request.referrer or '')
+        path = target.path if target.netloc == request.host else '/'
+        if target.netloc == request.host and target.query:
+            path += '?' + target.query
+        resp = make_response(redirect(path if path.startswith('/')
+                                      and not path.startswith('//') else '/'))
+        resp.set_cookie(LANGUAGE_COOKIE, code, max_age=60 * 60 * 24 * 365,
+                        samesite='Lax')
+        return resp
+
+    @app.context_processor
+    def inject_language():
+        """Gives the templates _() to translate texts and the language"""
+        language = g.get('language', DEFAULT_LANGUAGE)
+        return {'_': lambda text: translate(text, language),
+                'language': language,
+                'languages': LANGUAGES}
 
     # register formater functions
     app.jinja_env.globals.update(format_currency=format_currency)

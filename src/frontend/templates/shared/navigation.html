@@ -25,13 +25,25 @@
                 </a>
                 <div class="dropdown-menu" aria-labelledby="accountDropdown">
                   <form id="logout-form" method="POST" action="/logout">
-                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">Sign out<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
+                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">{{ _('Sign out') }}<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
                   </form>
                 </div>
               </li>
             </ul>
           </div>
         {% endif %}
+          <div class="language-switcher ml-auto" id="language-switcher">
+            <small>
+            {% for code, label in languages.items() %}
+              {% if code == language %}
+              <b data-language="{{ code }}" aria-current="true">{{ label }}</b>
+              {% else %}
+              <a href="/language/{{ code }}" data-language="{{ code }}" lang="{{ code }}">{{ label }}</a>
+              {% endif %}
+              {% if not loop.last %}|{% endif %}
+            {% endfor %}
+            </small>
+          </div>
         </div>
       </nav>
     </header>

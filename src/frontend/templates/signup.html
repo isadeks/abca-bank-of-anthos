@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<html lang="en">
+<html lang="{{ language }}">
   <head>
 {% include 'shared/html_head.html' %}
   </head>
@@ -25,9 +25,9 @@ limitations under the License.
     <main class="container">
       <!-- Header -->
       <div class="row d-flex align-items-end header header-body">
-        <div class="col-lg-4"><a href="/login" type="button" class="btn btn-secondary"><span class="mr-2 material-icons arrow-back">arrow_back</span>Back</a></div>
+        <div class="col-lg-4"><a href="/login" type="button" class="btn btn-secondary"><span class="mr-2 material-icons arrow-back">arrow_back</span>{{ _('Back') }}</a></div>
         <div class="col-md-8">
-          <h2 class="header-title" id="signup-title">Register a new account</h2>
+          <h2 class="header-title" id="signup-title">{{ _('Register a new account') }}</h2>
         </div>
       </div>
       <div class="row mt-5 mb-5">
@@ -37,12 +37,12 @@ limitations under the License.
               <div class="row mt-4">
                 <div class="col-10 offset-1 mb-2">
                   <form id="signup-form" class="needs-validation" novalidate="" method="POST" action="/signup">
-                    <h4 class="mb-4">Account Information</h4>
+                    <h4 class="mb-4">{{ _('Account Information') }}</h4>
                     <div id="alertBanner" class="alert alert-danger mb-4 hidden" role="alert">
-                      <span class="alert-icon mr-2 material-icons error-icon">error</span>Passwords don't match. Please try again.
+                      <span class="alert-icon mr-2 material-icons error-icon">error</span>{{ _("Passwords don't match. Please try again.") }}
                     </div>
                     <div class="mb-5">
-                      <label class="text-uppercase text-muted secondary-text" for="username">Username</label>
+                      <label class="text-uppercase text-muted secondary-text" for="username">{{ _('Username') }}</label>
                       <div class="input-group mt-2 mb-5">
                         <div class="input-group-prepend mr-2">
                           <span class="input-group-text"><span class="material-icons">account_circle</span></span>
@@ -55,7 +55,7 @@ limitations under the License.
                     </div>
 
                     <div class="mb-5">
-                      <label class="text-uppercase text-muted secondary-text" for="password">Password</label>
+                      <label class="text-uppercase text-muted secondary-text" for="password">{{ _('Password') }}</label>
                       <div class="input-group mt-2 mb-5">
                         <div class="input-group-prepend mr-2">
                           <span class="input-group-text"><span class="material-icons">lock</span></span>
@@ -68,7 +68,7 @@ limitations under the License.
                     </div>
 
                     <div class="mb-5">
-                      <label class="text-uppercase text-muted secondary-text" for="password-repeat">Confirm Password</label>
+                      <label class="text-uppercase text-muted secondary-text" for="password-repeat">{{ _('Confirm Password') }}</label>
                       <div class="input-group mt-2 mb-5">
                         <div class="input-group-prepend mr-2">
                           <span class="input-group-text"><span class="material-icons">lock</span></span>
@@ -297,7 +297,7 @@ limitations under the License.
 
                     <hr class="mb-4">
                     <div class="col-lg-10 offset-lg-1 sign-in">
-                      <button class="btn btn-block btn-primary" type="submit">Create Account</button>
+                      <button class="btn btn-block btn-primary" type="submit">{{ _('Create Account') }}</button>
                     </div>
                   </form>
                 </div>
