@@ -61,17 +61,43 @@ describe('User can have multiple accounts', function () {
         })
     })
 
+    // Fund the signed-in user's account through the deposit endpoint (as the
+    // deposit form does), then wait until the ledger reports the new balance.
+    const fund = (amount) => {
+        cy.request({
+            method: 'POST',
+            url: '/deposit',
+            form: true,
+            body: {
+                account: 'add',
+                external_account_num: '1234567890',
+                external_routing_num: '123456789',
+                amount: amount,
+                uuid: `multi-${Date.now()}-${uuid()}`,
+            },
+        }).then((response) => {
+            expect(response.status).to.eq(200)
+            expect(response.body).to.contain('Deposit successful')
+        })
+    }
+
+    const waitForBalance = (expected, attemptsLeft = 20) => {
+        cy.request('/home').then((response) => {
+            if (response.body.includes(expected)) {
+                return
+            }
+            expect(attemptsLeft, `balance never reached ${expected}`).to.be.greaterThan(0)
+            cy.wait(1000)
+            waitForBalance(expected, attemptsLeft - 1)
+        })
+    }
+
     it('transfers between own accounts', function () {
-        // a new user has no saved external accounts: deposit from a new one
-        cy.get('#depositSpan').click()
-        cy.get('#depositFunds').should('be.visible')
-        cy.get('#accounts').select('add')
-        cy.get('#external_account_num').type('1234567890')
-        cy.get('#external_routing_num').type('123456789')
-        cy.get('#deposit-amount').clear().type('100')
-        cy.get('#deposit-form button[type=submit]').click()
-        cy.get('#alert-message', { timeout: 20000 }).contains('Deposit successful')
+        fund('100')
+        waitForBalance('$100.00')
+
         openAccount('Savings')
+        cy.get('#alert-message', { timeout: 20000 }).should('contain', 'Opened account Savings')
         cy.get('#account-title').contains('Savings Account')
 
         cy.get('#accountSwitcherDropdown').click()
@@ -85,12 +111,15 @@ describe('User can have multiple accounts', function () {
             cy.get('#transfer-to').select(target)
         })
         cy.get('#transfer-amount').clear().type('30')
-        cy.get('#transfer-form button[type=submit]').click()
-        cy.get('#alert-message', { timeout: 20000 }).contains('Transfer successful')
-        cy.get('#current-balance').contains('$70.00')
+        cy.get('#transfer-form').submit()
+        cy.get('#alert-message', { timeout: 20000 }).should('contain', 'Transfer successful')
+        waitForBalance('$70.00')
 
+        cy.reload()
+        cy.get('#current-balance').contains('$70.00')
         cy.get('#accountSwitcherDropdown').click()
         cy.get('.account-switch-option').contains('Savings').click()
+        cy.get('#account-title').contains('Savings Account')
         cy.get('#current-balance').contains('$30.00')
     })
 })
