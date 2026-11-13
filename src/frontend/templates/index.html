@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<html lang="en">
+<html lang="{{ lang }}">
   <head>
 {% include 'shared/html_head.html' %}
   </head>
@@ -51,14 +51,14 @@ limitations under the License.
       <!-- Top row - overview, account # -->
       <div class="row col-lg-12 align-items-start top-row">
         <div class="col-md-8">
-          <small class="text-uppercase text-muted secondary-text">Overview</small>
-          <h2 class="header-title">Checking Account</h2>
+          <small class="text-uppercase text-muted secondary-text">{{ _('Overview') }}</small>
+          <h2 class="header-title">{{ _('Checking Account') }}</h2>
         </div>
 
         <div class="col-md-4 account-info text-right">
             <p>
               <span class="account-overview account-icon material-icons">info</span>
-              <span class="account-num-text">Account Number:</span><span class="account-number">{{ account_id }}</span>
+              <span class="account-num-text">{{ _('Account Number:') }}</span><span class="account-number">{{ account_id }}</span>
             </p>
         </div>
     </div>
@@ -71,7 +71,7 @@ limitations under the License.
               <div class="row align-items-start">
                 <div class="col">
                   <p class="text-uppercase mb-3">
-                    <b class="current-balance">Current Balance</b>
+                    <b class="current-balance">{{ _('Current Balance') }}</b>
                   </p>
                   <span class="h1 mb-0" id="current-balance">
                     {{ format_currency(balance) }}
@@ -89,7 +89,7 @@ limitations under the License.
             <div class="row align-items-start">
               <div class="col">
                 <span class="h5 mb-0" id="depositSpan">
-                  Deposit Funds
+                  {{ _('Deposit Funds') }}
                 </span>
               </div>
               <div class="button-icon col-auto">
@@ -105,7 +105,7 @@ limitations under the License.
             <div class="row align-items-start">
               <div class="col">
                 <span class="h5 mb-0" id="paymentSpan">
-                  Send Payment
+                  {{ _('Send Payment') }}
                 </span>
               </div>
               <div class="button-icon col-auto">
@@ -124,34 +124,34 @@ limitations under the License.
               <div class="row align-items-start">
                 <div class="col">
                   <h4 class="card-header-title">
-                    Transaction History
+                    {{ _('Transaction History') }}
                   </h4>
                 </div>
               </div>
             </div>
             <div class="table-responsive mb-0" id="transaction-table">
             {% if history is none %}
-              <h4 class="card-table-header">Error: Could Not Load Transactions</h4>
+              <h4 class="card-table-header">{{ _('Error: Could Not Load Transactions') }}</h4>
             {% elif history|length == 0 %}
-              <h4 class="card-table-header">No Transactions Found</h4>
+              <h4 class="card-table-header">{{ _('No Transactions Found') }}</h4>
             {% else %}
               <table class="table table-sm table-nowrap card-table">
                 <thead class="text-uppercase">
                   <tr>
                     <th>
-                      <a class="text-transaction-header">Date</a>
+                      <a class="text-transaction-header">{{ _('Date') }}</a>
                     </th>
                     <th>
-                      <a class="text-transaction-header">Type</a>
+                      <a class="text-transaction-header">{{ _('Type') }}</a>
                     </th>
                     <th>
-                      <a class="text-transaction-header">Account</a>
+                      <a class="text-transaction-header">{{ _('Account') }}</a>
                     </th>
                     <th>
-                      <a class="text-transaction-header">Label</a>
+                      <a class="text-transaction-header">{{ _('Label') }}</a>
                     </th>
                     <th class="text-right">
-                      <a class="text-transaction-header">Amount</a>
+                      <a class="text-transaction-header">{{ _('Amount') }}</a>
                     </th>
                   </tr>
                 </thead>
@@ -163,7 +163,7 @@ limitations under the License.
                     </td>
                     {% if t.toAccountNum == account_id %}
                       <td class="transaction-type">
-                        <span class="text-debit">●</span> Credit
+                        <span class="text-debit">●</span> {{ _('Credit') }}
                       </td>
                       <td class="transaction-account">
                         {{ t.fromAccountNum }}
@@ -172,7 +172,7 @@ limitations under the License.
                         {% if t.accountLabel != None %}
                           {{ t.accountLabel }}
                         {% else %}
-                          <span class="transaction-label-none">None</span>
+                          <span class="transaction-label-none">{{ _('None') }}</span>
                         {% endif %}
                       </td>
                       <td class="transaction-amount transaction-amount-credit">
@@ -180,7 +180,7 @@ limitations under the License.
                       </td>
                     {% elif t.fromAccountNum == account_id %}
                       <td class="transaction-type">
-                        <span class="text-credit">●</span> Debit
+                        <span class="text-credit">●</span> {{ _('Debit') }}
                       </td>
                       <td class="transaction-account">
                         {{ t.toAccountNum }}
@@ -189,7 +189,7 @@ limitations under the License.
                         {% if t.accountLabel != None %}
                           {{ t.accountLabel }}
                         {% else %}
-                          <span class="transaction-label-none">None</span>
+                          <span class="transaction-label-none">{{ _('None') }}</span>
                         {% endif %}
                       </td>
                       <td class="transaction-amount transaction-amount-debit">
@@ -212,15 +212,15 @@ limitations under the License.
           <div class="modal-content">
             <form id="deposit-form" class="needs-validation" novalidate="" method="POST" action="/deposit">
               <div class="modal-header">
-                <h3 class="modal-title header-title" id="exampleModalLongTitle">Make a Deposit</h3>
-                <button type="button" class="close deposit-cancel" data-dismiss="modal" aria-label="Close">
+                <h3 class="modal-title header-title" id="exampleModalLongTitle">{{ _('Make a Deposit') }}</h3>
+                <button type="button" class="close deposit-cancel" data-dismiss="modal" aria-label="{{ _('Close') }}">
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>
               <div class="modal-body">
                   <div class="row">
                     <div class="col-md-10 offset-md-1 mb-4">
-                      <label class="text-uppercase text-muted secondary-text mb-3" for="accounts">External Account</label>
+                      <label class="text-uppercase text-muted secondary-text mb-3" for="accounts">{{ _('External Account') }}</label>
                       <select class="custom-select d-block w-100" id="accounts" name="account">
                         {% for account in contacts %}
                           {% if account.is_external %}
@@ -230,50 +230,50 @@ limitations under the License.
                           {% endif %}
                         {% endfor %}
                         <option disabled>──────────</option>
-                        <option value="add">New External Account</option>
+                        <option value="add">{{ _('New External Account') }}</option>
                       </select>
                       <div id="otherDepositInputs" class="hidden">
                         <div id="alertBanner" class="alert alert-danger mt-3 mb-3" role="alert">
-                          <span class="error-icon mr-2 material-icons">error</span><strong>Warning</strong>: This website is a simulation. Please don't include real personal information.
+                          <span class="error-icon mr-2 material-icons">error</span><strong>{{ _('Warning') }}</strong>{{ _(": This website is a simulation. Please don't include real personal information.") }}
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
                             <span class="input-group-text"><strong class="modal-icon">#</strong></span>
                           </div>
-                          <input class="form-control" type="number" step='1' id="external_account_num" name="external_account_num" min=1000000000 max=9999999999  placeholder="Account Number"/>
+                          <input class="form-control" type="number" step='1' id="external_account_num" name="external_account_num" min=1000000000 max=9999999999  placeholder="{{ _('Account Number') }}"/>
                           <div class="invalid-feedback">
-                            Please enter a valid 10 digit account number.
+                            {{ _('Please enter a valid 10 digit account number.') }}
                           </div>
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
                             <span class="input-group-text"><span class="modal-icon material-icons">account_balance</span></span>
                           </div>
-                          <input class="form-control" type="number" step='1' id="external_routing_num" name="external_routing_num" min=100000000 max=999999999  placeholder="Routing Number"/>
+                          <input class="form-control" type="number" step='1' id="external_routing_num" name="external_routing_num" min=100000000 max=999999999  placeholder="{{ _('Routing Number') }}"/>
                           <div class="invalid-feedback">
-                            Please enter a valid 9 digit routing number.
+                            {{ _('Please enter a valid 9 digit routing number.') }}
                           </div>
                         </div>
                         <div class="input-group mb-3">
                           <div class="input-group-prepend">
                             <span class="input-group-text"><span class="modal-icon material-icons">label</span></span>
                           </div>
-                          <input class="form-control"  type="text" id="external_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" name="external_label" placeholder="Account Label (Optional)"/>
+                          <input class="form-control"  type="text" id="external_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" name="external_label" placeholder="{{ _('Account Label (Optional)') }}"/>
                           <div class="invalid-feedback">
-                            Invalid label.
+                            {{ _('Invalid label.') }}
                           </div>
                         </div>
                       </div>
                     </div>
                     <div class="col-md-10 offset-md-1">
-                      <label class="text-uppercase text-muted secondary-text mb-1" for="deposit-amount">Deposit Amount</label>
+                      <label class="text-uppercase text-muted secondary-text mb-1" for="deposit-amount">{{ _('Deposit Amount') }}</label>
                       <div class="input-group mb-3">
                         <div class="input-group-prepend mr-2">
                           <span class="input-group-text"><span class="amount-font material-icons money-icon">attach_money</span></span>
                         </div>
                         <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="deposit-amount" name="amount" placeholder="0.00" min="0.01" max="500000.00" required>
                         <div class="invalid-feedback">
-                          Please enter a valid amount with at most two decimal places.
+                          {{ _('Please enter a valid amount with at most two decimal places.') }}
                         </div>
                       </div>
                     </div>
@@ -283,8 +283,8 @@ limitations under the License.
                 <div class="modal-body">
                   <div class="row align-items-end text-right">
                     <div class="col-md-10 offset-md-1 text-right align-items-end">
-                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary btn-with-padding deposit-send-button">Deposit</button>
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">{{ _('Cancel') }}</button>
+                        <button type="submit" class="btn btn-primary btn-with-padding deposit-send-button">{{ _('Deposit') }}</button>
                       </div>
                     </div>
                 </div>
@@ -301,15 +301,15 @@ limitations under the License.
           <div class="modal-content">
             <form id="payment-form" class="needs-validation" novalidate="" method="POST" action="/payment">
               <div class="modal-header">
-                <h3 class="modal-title header-title" id="exampleModalLongTitle">Send a Payment</h3>
-                <button type="button" class="close payment-cancel" data-dismiss="modal" aria-label="Close">
+                <h3 class="modal-title header-title" id="exampleModalLongTitle">{{ _('Send a Payment') }}</h3>
+                <button type="button" class="close payment-cancel" data-dismiss="modal" aria-label="{{ _('Close') }}">
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>
               <div class="modal-body">
                 <div class="row">
                   <div class="col-md-10 offset-md-1 mb-4">
-                    <label class="text-uppercase text-muted secondary-text mb-3" for="payment-accounts">Recipient</label>
+                    <label class="text-uppercase text-muted secondary-text mb-3" for="payment-accounts">{{ _('Recipient') }}</label>
 
                     <select class="custom-select d-block w-100 mb-3" id="payment-accounts" name="account_num">
                       {% for account in contacts %}
@@ -318,38 +318,38 @@ limitations under the License.
                           {% endif %}
                       {% endfor %}
                       <option disabled>──────────</option>
-                      <option value="add">New Recipient</option>
+                      <option value="add">{{ _('New Recipient') }}</option>
                     </select>
                     <div id="otherAccountInputs" class="hidden">
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">
                           <span class="input-group-text"><strong class="modal-icon">#</strong></span>
                         </div>
-                        <input class="form-control" type="number" step='1' id="contact_account_num" name="contact_account_num" min=1000000000 max=9999999999  placeholder="Account Number"/>
+                        <input class="form-control" type="number" step='1' id="contact_account_num" name="contact_account_num" min=1000000000 max=9999999999  placeholder="{{ _('Account Number') }}"/>
                         <div class="invalid-feedback">
-                          Please enter a valid 10 digit account number.
+                          {{ _('Please enter a valid 10 digit account number.') }}
                         </div>
                       </div>
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">
                           <span class="input-group-text"><span class="modal-icon material-icons">label</span></span>
                         </div>
-                        <input class="form-control"  type="text" id="contact_label" name="contact_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" placeholder="Contact Label (Optional)"/>
+                        <input class="form-control"  type="text" id="contact_label" name="contact_label" maxLength="30" pattern="^[0-9a-zA-Z][0-9a-zA-Z ]{0,29}$" placeholder="{{ _('Contact Label (Optional)') }}"/>
                         <div class="invalid-feedback">
-                            Invalid label.
+                            {{ _('Invalid label.') }}
                           </div>
                       </div>
                     </div>
                   </div>
                   <div class="col-md-10 offset-md-1">
-                    <label class="text-uppercase text-muted secondary-text mb-3" for="payment-amount">Transaction Amount</label>
+                    <label class="text-uppercase text-muted secondary-text mb-3" for="payment-amount">{{ _('Transaction Amount') }}</label>
                     <div class="input-group mb-3">
                       <div class="input-group-prepend mr-2">
                         <span class="input-group-text"><span class="amount-font material-icons">attach_money</span></span>
                       </div>
                       <input class="form-control amount-font" type="number" autocomplete="off" step="0.01" id="payment-amount" name="amount" placeholder="0.00" min="0.01" max="{{ balance / 100 if balance is not none }}" required>
                       <div class="invalid-feedback">
-                        Please enter a valid amount.
+                        {{ _('Please enter a valid amount.') }}
                       </div>
                     </div>
                   </div>
@@ -359,8 +359,8 @@ limitations under the License.
               <div class="modal-body">
                 <div class="row align-items-end text-right">
                   <div class="col-md-10 offset-md-1 text-right align-items-end">
-                      <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                      <button type="submit" class="btn btn-primary btn-with-padding deposit-send-button">Send</button>
+                      <button type="button" class="btn btn-secondary" data-dismiss="modal">{{ _('Cancel') }}</button>
+                      <button type="submit" class="btn btn-primary btn-with-padding deposit-send-button">{{ _('Send') }}</button>
                     </div>
                   </div>
               </div>

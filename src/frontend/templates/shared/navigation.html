@@ -11,8 +11,15 @@
             {{ bank_name }}
           </a>
         {% endif %}
+        <ul class="navbar-nav flex-row ml-auto mr-3" id="language-switcher" aria-label="{{ _('Language') }}">
+        {% for code, language_name in languages.items() %}
+          <li class="nav-item mr-2">
+            <a class="nav-link{% if code == lang %} active font-weight-bold{% endif %}" id="lang-{{ code }}" href="{{ language_url(code) }}" lang="{{ code }}" hreflang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ language_name }}</a>
+          </li>
+        {% endfor %}
+        </ul>
         {% if name %}
-          <button type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation" class="navbar-toggler navbar-toggler-right">
+          <button type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarResponsive" aria-expanded="false" aria-label="{{ _('Toggle navigation') }}" class="navbar-toggler navbar-toggler-right">
             <span class="material-icons">menu</span>
           </button>
           <div class="justify-content-end collapse navbar-collapse" id="navbarNav">
@@ -25,7 +32,7 @@
                 </a>
                 <div class="dropdown-menu" aria-labelledby="accountDropdown">
                   <form id="logout-form" method="POST" action="/logout">
-                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">Sign out<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
+                    <a class="dropdown-item" onclick="document.querySelector('#logout-form').submit();">{{ _('Sign out') }}<i class="fa-icon-spacer fas fa-sign-out-alt"></i></a>
                   </form>
                 </div>
               </li>

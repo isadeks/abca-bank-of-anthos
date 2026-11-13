@@ -22,13 +22,14 @@ import json
 import logging
 import os
 import socket
+from urllib.parse import urlencode
 from decimal import Decimal, DecimalException
 from time import sleep
 
 import requests
 from requests.exceptions import HTTPError, RequestException
 import jwt
-from flask import Flask, abort, jsonify, make_response, redirect, \
+from flask import Flask, abort, g, jsonify, make_response, redirect, \
     render_template, request, url_for
 
 from opentelemetry import trace
@@ -42,6 +43,7 @@ from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 
 # Local imports
+import i18n
 from api_call import ApiCall, ApiRequest
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
@@ -67,6 +69,39 @@ def create_app():
     of the Frontend Flask App
     """
     app = Flask(__name__)
+
+    @app.before_request
+    def select_language():
+        """Picks the language of the page: ?lang=, then the cookie, then the browser"""
+        g.lang = i18n.choose_language(request.args.get('lang'),
+                                      request.cookies.get(i18n.LANGUAGE_COOKIE),
+                                      request.accept_languages)
+
+    @app.after_request
+    def remember_language(response):
+        """Saves the language chosen with ?lang= for the next pages"""
+        chosen = request.args.get('lang')
+        if chosen in i18n.LANGUAGES:
+            response.set_cookie(i18n.LANGUAGE_COOKIE, chosen,
+                                max_age=365 * 24 * 3600, samesite='Lax')
+        return response
+
+    def _(text):
+        """Translates a text into the language of the current request"""
+        return i18n.translate(text, g.get('lang', i18n.DEFAULT_LANGUAGE))
+
+    def language_url(code):
+        """The URL of the current page in another language"""
+        args = request.args.to_dict()
+        args['lang'] = code
+        return request.path + '?' + urlencode(args)
+
+    @app.context_processor
+    def inject_language():
+        return {'_': _,
+                'lang': g.get('lang', i18n.DEFAULT_LANGUAGE),
+                'languages': i18n.LANGUAGES,
+                'language_url': language_url}
 
     # Disabling unused-variable for lines with route decorated functions
     # as pylint thinks they are unused
@@ -183,7 +218,7 @@ def create_app():
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
-                               message=message,
+                               message=_(message) if message else message,
                                message_is_error=is_error,
                                name=display_name,
                                platform=platform,
@@ -199,7 +234,10 @@ def create_app():
                 reason - optional explanation shown after the message
                 status - HTTP status code of the response
         """
-        msg = f'{kind} failed: {reason}' if reason else f'{kind} failed'
+        msg = _(f'{kind} failed')
+        if reason:
+            colon = ' :' if g.lang == 'fr' else ':'
+            msg = f'{msg}{colon} {_(reason)}'
         return _render_home(token, message=msg, is_error=True, status=status)
 
     def _populate_contact_labels(account_id, transactions, contacts):
@@ -291,7 +329,8 @@ def create_app():
                 return _transaction_failed(token, 'Payment', 'missing form field')
             return _transaction_failed(
                 token, 'Payment',
-                f'{request.form.get("amount", "")} is not a valid number')
+                _('{value} is not a valid number').format(
+                    value=request.form.get("amount", "")))
 
     @app.route('/deposit', methods=['POST'])
     def deposit():
@@ -359,7 +398,8 @@ def create_app():
                 return _transaction_failed(token, 'Deposit', 'missing form field')
             return _transaction_failed(
                 token, 'Deposit',
-                f'{request.form.get("amount", "")} is not a valid number')
+                _('{value} is not a valid number').format(
+                    value=request.form.get("amount", "")))
 
     def _amount_to_cents(user_input):
         """Convert a decimal amount string to an integer number of cents.
@@ -472,7 +512,7 @@ def create_app():
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                default_password=os.getenv('DEFAULT_PASSWORD', ''),
                                default_user=os.getenv('DEFAULT_USERNAME', ''),
-                               message=request.args.get('msg', None),
+                               message=_(request.args.get('msg', '')) or None,
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
@@ -700,7 +740,7 @@ def create_app():
         """ Format the input timestamp month in a human readable way """
         # TODO: time zones?
         date = datetime.datetime.strptime(timestamp, app.config['TIMESTAMP_FORMAT'])
-        return date.strftime('%b')
+        return i18n.month_abbreviation(date.month, g.get('lang', i18n.DEFAULT_LANGUAGE))
 
     def format_currency(int_amount):
         """ Format the input currency in a human readable way """
