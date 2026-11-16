@@ -38,7 +38,7 @@ def test_added_contact_is_listed(client, user, auth_header):
 
     listed = client.get('/contacts/' + username, headers=auth_header)
     assert listed.status_code == 200
-    assert listed.get_json() == [contact]
+    assert listed.get_json() == [dict(contact, is_favorite=False)]
 
 
 def test_external_contact_keeps_its_flag(client, user, auth_header):
