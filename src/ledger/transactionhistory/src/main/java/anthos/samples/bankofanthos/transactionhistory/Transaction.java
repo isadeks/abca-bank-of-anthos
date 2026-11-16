@@ -23,6 +23,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import java.util.Date;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -59,6 +60,10 @@ public final class Transaction {
     private Date timestamp;
 
     @Column(name = "CATEGORY", nullable = false, updatable = false)
+    // Not mapped to the CATEGORY column: the column may not exist yet in
+    // older ledger databases. Loaded separately, see
+    // TransactionRepository.loadCategories.
+    @Transient
     @JsonProperty("category")
     private String category = DEFAULT_CATEGORY;
 
@@ -98,6 +103,10 @@ public final class Transaction {
     @JsonProperty("category")
     public String getCategory() {
         return normalizeCategory(category);
+    }
+
+    void setCategory(String value) {
+        this.category = normalizeCategory(value);
     }
 
     /**

@@ -129,7 +129,9 @@ public final class LedgerReader {
      */
     private long pollTransactions(long startingId) {
         long latestId = startingId;
-        Iterable<Transaction> transactionList = dbRepo.findLatest(startingId);
+        java.util.List<Transaction> transactionList =
+            dbRepo.findLatest(startingId);
+        dbRepo.loadCategories(transactionList);
         LOGGER.debug("Polling Transactions");
         for (Transaction transaction : transactionList) {
             callback.processTransaction(transaction);

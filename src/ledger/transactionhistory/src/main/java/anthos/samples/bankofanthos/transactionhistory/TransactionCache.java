@@ -67,9 +67,10 @@ public class TransactionCache {
               DataAccessResourceFailureException  {
             LOGGER.debug("Cache loaded from db");
             Pageable request = PageRequest.of(0, historyLimit);
-            return dbRepo.findForAccount(accountId,
-                localRoutingNum,
-                request);
+            java.util.LinkedList<Transaction> history = dbRepo.findForAccount(
+                accountId, localRoutingNum, request);
+            dbRepo.loadCategories(history);
+            return history;
           }
         };
       return CacheBuilder.newBuilder()

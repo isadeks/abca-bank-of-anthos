@@ -36,6 +36,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -289,8 +290,18 @@ public final class TransactionHistoryController {
             }
             LocalDateTime monthStart = LocalDateTime.now()
                 .withDayOfMonth(1).toLocalDate().atStartOfDay();
-            List<Object[]> rows = dbRepo.sumSpentByCategory(accountId,
-                localRoutingNum, monthStart, monthStart.plusMonths(1));
+            LocalDateTime monthEnd = monthStart.plusMonths(1);
+            List<Object[]> rows;
+            try {
+                rows = dbRepo.sumSpentByCategory(accountId,
+                    localRoutingNum, monthStart, monthEnd);
+            } catch (DataAccessException e) {
+                // ledger without CATEGORY column: all spending is "Other"
+                Long total = dbRepo.sumSpent(accountId,
+                    localRoutingNum, monthStart, monthEnd);
+                rows = new ArrayList<>();
+                rows.add(new Object[] {null, total});
+            }
             Map<String, Long> totals = new LinkedHashMap<>();
             for (String name : Transaction.CATEGORIES) {
                 totals.put(name, 0L);

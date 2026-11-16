@@ -15,9 +15,11 @@
 package anthos.samples.bankofanthos.transactionhistory;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
@@ -85,4 +87,51 @@ public interface TransactionRepository
                                       String routingNum,
                                       LocalDateTime from,
                                       LocalDateTime to);
+
+    /**
+     * Returns the total spent in the period [from, to) without categories,
+     * for ledger databases that have no CATEGORY column.
+     */
+    @Query(value = "SELECT SUM(AMOUNT) FROM TRANSACTIONS "
+        + " WHERE FROM_ACCT = CAST(?1 AS CHAR(10)) "
+        + "   AND FROM_ROUTE = CAST(?2 AS CHAR(9)) "
+        + "   AND TIMESTAMP >= ?3 AND TIMESTAMP < ?4",
+        nativeQuery = true)
+    Long sumSpent(String accountNum, String routingNum,
+                  LocalDateTime from, LocalDateTime to);
+
+    /**
+     * Returns rows of {transaction id, category} for the given ids.
+     */
+    @Query(value = "SELECT TRANSACTION_ID, CATEGORY FROM TRANSACTIONS "
+        + " WHERE TRANSACTION_ID IN (?1)", nativeQuery = true)
+    List<Object[]> findCategories(Collection<Long> ids);
+
+    /**
+     * Sets the category of the given transactions from the ledger.
+     * Transactions stay "Other" if the ledger has no category column.
+     */
+    default void loadCategories(Collection<Transaction> transactions) {
+        if (transactions == null || transactions.isEmpty()) {
+            return;
+        }
+        java.util.Map<Long, Transaction> byId = new java.util.HashMap<>();
+        for (Transaction t : transactions) {
+            byId.put(t.getTransactionId(), t);
+        }
+        try {
+            List<Object[]> rows = findCategories(byId.keySet());
+            if (rows == null) {
+                return;
+            }
+            for (Object[] row : rows) {
+                Transaction t = byId.get(((Number) row[0]).longValue());
+                if (t != null) {
+                    t.setCategory(row[1] == null ? null : row[1].toString());
+                }
+            }
+        } catch (DataAccessException e) {
+            // no CATEGORY column: everything stays "Other"
+        }
+    }
 }
