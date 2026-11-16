@@ -69,4 +69,16 @@ public interface TransactionRepository
     @Query("SELECT t FROM Transaction t "
         + " WHERE t.transactionId > ?1 ORDER BY t.transactionId ASC")
     List<Transaction> findLatest(long latestTransaction);
+
+    /**
+     * Transactions sent from an account to one recipient in the window
+     * [from, to). Only the sender's account id is matched; the callers
+     * only pass accounts of the local bank.
+     */
+    @Query("SELECT t FROM Transaction t "
+        + " WHERE t.fromAccountNum = ?1 AND t.toRoutingNum = ?2 "
+        + " AND t.toAccountNum = ?3 "
+        + " AND t.timestamp >= ?4 AND t.timestamp < ?5")
+    List<Transaction> findSentBetween(String fromAccount, String toRouting,
+            String toAccount, java.util.Date from, java.util.Date to);
 }
