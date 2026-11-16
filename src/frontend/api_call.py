@@ -17,6 +17,8 @@
 from requests import get
 from requests.exceptions import RequestException
 
+from resilience import call_with_retry, record_fallback
+
 
 class ApiRequest:
     """Class for defining an API request"""
@@ -38,15 +40,21 @@ class ApiCall:
         self.logger = logger
 
     def make_call(self):
-        """Making an API call"""
-        response = None
-
-        try:
+        """
+        Making an API call: one retry with backoff on failure. If it still
+        fails, records the fallback (span event and metric) and returns None.
+        """
+        def _get():
             response = get(url=self.api_request.url,
                            headers=self.api_request.headers,
                            timeout=self.api_request.timeout)
+            response.raise_for_status()
+            return response
+
+        try:
+            return call_with_retry(_get)
         except (RequestException, ValueError) as err:
             self.logger.error('Error getting %s: %s',
                               self.display_name, str(err))
-
-        return response
+            record_fallback(self.display_name, type(err).__name__)
+        return None

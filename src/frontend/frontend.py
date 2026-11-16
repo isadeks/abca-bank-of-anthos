@@ -31,7 +31,10 @@ import jwt
 from flask import Flask, abort, jsonify, make_response, redirect, \
     render_template, request, url_for
 
-from opentelemetry import trace
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.propagate import set_global_textmap
@@ -43,6 +46,7 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 
 # Local imports
 from api_call import ApiCall, ApiRequest
+from resilience import call_with_retry, record_fallback
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
 
@@ -137,13 +141,13 @@ def create_app():
             ApiCall(display_name=BALANCE_NAME,
                     api_request=ApiRequest(url=f'{app.config["BALANCES_URI"]}/{account_id}',
                                            headers=hed,
-                                           timeout=app.config['BACKEND_TIMEOUT']),
+                                           timeout=app.config['BACKEND_READ_TIMEOUT']),
                     logger=app.logger),
             # get history
             ApiCall(display_name=TRANSACTION_LIST_NAME,
                     api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
                                            headers=hed,
-                                           timeout=app.config['BACKEND_TIMEOUT']),
+                                           timeout=app.config['BACKEND_READ_TIMEOUT']),
                     logger=app.logger),
             # get contacts
             ApiCall(display_name=CONTACTS_NAME,
@@ -382,15 +386,25 @@ def create_app():
         token = request.cookies.get(app.config['TOKEN_NAME'])
         hed = {'Authorization': 'Bearer ' + token,
                'content-type': 'application/json'}
-        resp = requests.post(url=app.config["TRANSACTIONS_URI"],
-                             data=jsonify(transaction_data).data,
-                             headers=hed,
-                             timeout=app.config['BACKEND_TIMEOUT'])
+        payload = jsonify(transaction_data).data
+        try:
+            # one retry on connection errors/timeouts; the transaction uuid
+            # lets ledgerwriter reject a duplicate
+            resp = call_with_retry(
+                lambda: requests.post(url=app.config["TRANSACTIONS_URI"],
+                                      data=payload,
+                                      headers=hed,
+                                      timeout=app.config['BACKEND_READ_TIMEOUT']))
+        except requests.exceptions.RequestException as err:
+            record_fallback('ledgerwriter', type(err).__name__)
+            raise
         try:
             resp.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
         except requests.exceptions.HTTPError as http_request_err:
             # 4XX: the ledger rejected the transaction; 5XX: backend failure
             status = 400 if resp.status_code < 500 else 502
+            if status == 502:
+                record_fallback('ledgerwriter', f'http_{resp.status_code}')
             raise TransactionError(resp.text, status) from http_request_err
         # Short delay to allow the transaction to propagate to balancereader
         # and transaction-history
@@ -728,6 +742,9 @@ def create_app():
     app.config['LOCAL_ROUTING'] = os.getenv('LOCAL_ROUTING_NUM')
     # timeout in seconds for calls to the backend
     app.config['BACKEND_TIMEOUT'] = int(os.getenv('BACKEND_TIMEOUT', '4'))
+    # shorter timeout for the balance, history and transaction calls, which
+    # are retried once
+    app.config['BACKEND_READ_TIMEOUT'] = float(os.getenv('BACKEND_READ_TIMEOUT', '2'))
     app.config['TOKEN_NAME'] = 'token'
     app.config['CONSENT_COOKIE'] = 'consented'
     app.config['TIMESTAMP_FORMAT'] = '%Y-%m-%dT%H:%M:%S.%f%z'
@@ -785,6 +802,9 @@ def create_app():
         # k8s.namespace.name) come from the standard OTEL_* environment
         # variables, read by the SDK and the exporter.
         trace.set_tracer_provider(TracerProvider())
+        # Metrics (including the fallback counter) over OTLP as well
+        metrics.set_meter_provider(MeterProvider(
+            metric_readers=[PeriodicExportingMetricReader(OTLPMetricExporter())]))
         otlp_exporter = OTLPSpanExporter()
         trace.get_tracer_provider().add_span_processor(
             BatchSpanProcessor(otlp_exporter)
