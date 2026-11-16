@@ -127,6 +127,13 @@ limitations under the License.
                     Transaction History
                   </h4>
                 </div>
+                <div class="col-auto">
+                  <form id="statement-form" class="form-inline" method="get" action="{{ url_for('statement') }}">
+                    <label for="statement-month" class="mr-2 mb-0">Statement month</label>
+                    <input type="month" id="statement-month" name="month" class="form-control form-control-sm mr-2" required>
+                    <button type="submit" id="statement-download" class="btn btn-sm btn-primary">Download statement</button>
+                  </form>
+                </div>
               </div>
             </div>
             <div class="table-responsive mb-0" id="transaction-table">

@@ -23,7 +23,13 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.Collection;
+import java.util.Date;
+import java.util.List;
 import java.util.Deque;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
@@ -31,11 +37,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -61,6 +70,7 @@ public final class TransactionHistoryController {
     @Value("${HISTORY_LIMIT:100}")
     private Integer historyLimit;
     private String version;
+    private String localRoutingNum;
 
     private JWTVerifier verifier;
     private LedgerReader ledgerReader;
@@ -80,6 +90,7 @@ public final class TransactionHistoryController {
             @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
             @Value("${VERSION}") final String version) {
         this.version = version;
+        this.localRoutingNum = localRoutingNum;
         // Initialize JWT verifier.
         this.verifier = verifier;
         // Initialize cache
@@ -218,5 +229,79 @@ public final class TransactionHistoryController {
             return new ResponseEntity<>("cache error",
                                               HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /**
+     * Return one month of transactions for the account as CSV.
+     *
+     * @param bearerToken  HTTP request 'Authorization' header
+     * @param accountId    the account to get the statement for
+     * @param month        the month, formatted YYYY-MM (UTC)
+     * @return             CSV attachment, HTTP 400 for a bad account id or
+     *                     month, HTTP 401 if not authorized.
+     */
+    @GetMapping("/statements/{accountId}")
+    public ResponseEntity<?> getStatement(
+            @RequestHeader("Authorization") String bearerToken,
+            @PathVariable String accountId,
+            @RequestParam("month") String month) {
+
+        if (!ACCOUNT_ID_REGEX.matcher(accountId).matches()) {
+            return new ResponseEntity<>("invalid account id",
+                                              HttpStatus.BAD_REQUEST);
+        }
+        YearMonth ym;
+        try {
+            ym = YearMonth.parse(month);
+        } catch (DateTimeParseException e) {
+            return new ResponseEntity<>("invalid month, expected YYYY-MM",
+                                              HttpStatus.BAD_REQUEST);
+        }
+
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            bearerToken = bearerToken.split("Bearer ")[1];
+        }
+        try {
+            DecodedJWT jwt = verifier.verify(bearerToken);
+            if (!accountId.equals(jwt.getClaim("acct").asString())) {
+                LOGGER.error("Failed to retrieve statement: not authorized");
+                return new ResponseEntity<>("not authorized",
+                                                  HttpStatus.UNAUTHORIZED);
+            }
+        } catch (JWTVerificationException e) {
+            LOGGER.error("Failed to retrieve statement: not authorized");
+            return new ResponseEntity<>("not authorized",
+                                              HttpStatus.UNAUTHORIZED);
+        }
+
+        LocalDate first = ym.atDay(1);
+        Date start = Date.from(first.atStartOfDay(ZoneOffset.UTC).toInstant());
+        Date end = Date.from(first.plusMonths(1)
+                .atStartOfDay(ZoneOffset.UTC).toInstant());
+        List<Transaction> txs = dbRepo.findForAccountBetween(
+                accountId, localRoutingNum, start, end);
+
+        StringBuilder csv = new StringBuilder(
+                "date,type,counterparty,amount\n");
+        for (Transaction t : txs) {
+            boolean outgoing = accountId.equals(t.getFromAccountNum())
+                    && localRoutingNum.equals(t.getFromRoutingNum());
+            String other = outgoing
+                    ? t.getToAccountNum() : t.getFromAccountNum();
+            long cents = t.getAmount();
+            csv.append(t.getTimestamp().toInstant()
+                    .atOffset(ZoneOffset.UTC).toLocalDate())
+               .append(outgoing ? ",debit," : ",credit,")
+               .append(other == null ? "" : other.trim())
+               .append(',')
+               .append(outgoing ? "-" : "")
+               .append(String.format("%d.%02d", cents / 100, cents % 100))
+               .append('\n');
+        }
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType("text/csv"))
+            .header(HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename=\"statement-" + ym + ".csv\"")
+            .body(csv.toString());
     }
 }

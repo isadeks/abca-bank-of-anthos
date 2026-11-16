@@ -117,6 +117,40 @@ def create_app():
                                     _scheme=app.config['SCHEME']))
         return _render_home(token, message=request.args.get('msg', None))
 
+    @app.route('/statement', methods=['GET'])
+    def statement():
+        """
+        Downloads one month of the signed-in account's transactions as CSV.
+
+        Query param: month - YYYY-MM
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        month = request.args.get('month', '')
+        try:
+            datetime.datetime.strptime(month, '%Y-%m')
+        except ValueError:
+            return 'invalid month, expected YYYY-MM', 400
+        account_id = decode_token(token)['acct']
+        try:
+            resp = requests.get(
+                url=f'{app.config["STATEMENT_URI"]}/{account_id}',
+                params={'month': month},
+                headers={'Authorization': 'Bearer ' + token},
+                timeout=app.config['BACKEND_TIMEOUT'])
+            resp.raise_for_status()
+        except (RequestException, HTTPError) as err:
+            app.logger.error('Error getting statement: %s', str(err))
+            return 'Could not load statement', 502
+        response = make_response(resp.text)
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = \
+            f'attachment; filename="statement-{month}.csv"'
+        return response
+
     def _render_home(token, message=None, is_error=False, status=200):
         """
         Renders the home page for a user with a valid token.
@@ -719,6 +753,8 @@ def create_app():
     app.config["BALANCES_URI"] = 'http://{}/balances'.format(
         os.environ.get('BALANCES_API_ADDR'))
     app.config["HISTORY_URI"] = 'http://{}/transactions'.format(
+        os.environ.get('HISTORY_API_ADDR'))
+    app.config["STATEMENT_URI"] = 'http://{}/statements'.format(
         os.environ.get('HISTORY_API_ADDR'))
     app.config["LOGIN_URI"] = 'http://{}/login'.format(
         os.environ.get('USERSERVICE_API_ADDR'))
