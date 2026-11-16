@@ -16,7 +16,12 @@ test('starring a contact moves it to the top of the payment form with a star', a
   await expect(toggle).toContainText('Star this contact');
   await highlight(page, toggle, 'star this contact');
   await shot(page, `Starring ${label} from the payment form`, { focus: select });
-  await toggle.click();
+  await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/favorite') && r.request().method() === 'POST'),
+    toggle.click(),
+  ]);
+  // the page reloads itself once the star is saved; start from a fresh home page
+  await page.goto('/home');
 
   await page.locator('#paymentSpan').click();
   const first = select.locator('option').first();
@@ -28,7 +33,11 @@ test('starring a contact moves it to the top of the payment form with a star', a
   // unstar again so the demo account is left as it was
   await select.selectOption({ index: 0 });
   await expect(toggle).toContainText('Unstar this contact');
-  await toggle.click();
+  await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/favorite') && r.request().method() === 'POST'),
+    toggle.click(),
+  ]);
+  await page.goto('/home');
   await page.locator('#paymentSpan').click();
   await expect(select.locator('option[data-favorite="true"]')).toHaveCount(0);
 });
