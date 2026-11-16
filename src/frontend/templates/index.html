@@ -73,9 +73,15 @@ limitations under the License.
                   <p class="text-uppercase mb-3">
                     <b class="current-balance">Current Balance</b>
                   </p>
+                  {% if balance is none %}
+                  <span class="h4 mb-0 text-muted" id="current-balance">
+                    Balance temporarily unavailable
+                  </span>
+                  {% else %}
                   <span class="h1 mb-0" id="current-balance">
                     {{ format_currency(balance) }}
                   </span>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -131,7 +137,7 @@ limitations under the License.
             </div>
             <div class="table-responsive mb-0" id="transaction-table">
             {% if history is none %}
-              <h4 class="card-table-header">Error: Could Not Load Transactions</h4>
+              <h4 class="card-table-header">History temporarily unavailable</h4>
             {% elif history|length == 0 %}
               <h4 class="card-table-header">No Transactions Found</h4>
             {% else %}
