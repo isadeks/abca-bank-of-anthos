@@ -17,6 +17,7 @@
 package anthos.samples.bankofanthos.ledgerwriter;
 
 import java.util.Date;
+import java.util.List;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,6 +30,7 @@ import jakarta.persistence.Transient;
 import org.hibernate.annotations.CreationTimestamp;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
 
 /**
  * Defines a banking transaction.
@@ -61,11 +63,18 @@ public final class Transaction {
     @CreationTimestamp
     @JsonProperty("timestamp")
     private Date timestamp;
+    @Column(name = "CATEGORY", nullable = false, updatable = false)
+    @JsonProperty("category")
+    private String category = DEFAULT_CATEGORY;
     // UUID is used for preventing duplicate requests from client
     // Do not persist to database
     @Transient
     @JsonProperty("uuid")
     private String requestUuid;
+
+    public static final String DEFAULT_CATEGORY = "Other";
+    public static final List<String> CATEGORIES = List.of(
+            "Groceries", "Rent", "Transport", "Eating out", DEFAULT_CATEGORY);
 
     private static final double CENTS_PER_DOLLAR = 100.0;
 
@@ -91,6 +100,34 @@ public final class Transaction {
 
     public Integer getAmount() {
         return amount;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+
+    /**
+     * Sets the category; a missing or unknown value becomes "Other".
+     */
+    @JsonSetter("category")
+    public void setCategory(String value) {
+        this.category = normalizeCategory(value);
+    }
+
+    /**
+     * Maps a requested category to a known one (case-insensitive),
+     * defaulting to "Other".
+     */
+    public static String normalizeCategory(String value) {
+        if (value != null) {
+            String trimmed = value.trim();
+            for (String known : CATEGORIES) {
+                if (known.equalsIgnoreCase(trimmed)) {
+                    return known;
+                }
+            }
+        }
+        return DEFAULT_CATEGORY;
     }
 
     public String getRequestUuid() {
