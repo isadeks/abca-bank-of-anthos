@@ -43,3 +43,7 @@ INSERT INTO contacts VALUES
 ('bob', 'External Bank', '9099791699', '808889588', 'true'),
 ('eve', 'External Bank', '9099791699', '808889588', 'true')
 ON CONFLICT DO NOTHING;
+
+-- A couple of demo favourites
+UPDATE contacts SET is_favourite = TRUE
+WHERE username = 'testuser' AND label IN ('Alice', 'External Bank');

@@ -39,8 +39,12 @@ CREATE TABLE IF NOT EXISTS contacts (
   account_num CHAR(10) NOT NULL,
   routing_num CHAR(9) NOT NULL,
   is_external BOOLEAN NOT NULL,
+  is_favourite BOOLEAN NOT NULL DEFAULT FALSE,
   FOREIGN KEY (username) REFERENCES users(username)
 );
+
+-- Databases created before favourites existed get the column too.
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS is_favourite BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE INDEX IF NOT EXISTS idx_contacts_username ON contacts (username);
 

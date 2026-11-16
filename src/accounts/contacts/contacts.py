@@ -84,7 +84,8 @@ def create_app():
             if username != auth_payload["user"]:
                 raise PermissionError
 
-            contacts_list = contacts_db.get_contacts(username)
+            contacts_list = contacts_db.get_contacts(
+                username, include_favourite=True)
             app.logger.debug("Successfully retrieved contacts.")
             return jsonify(contacts_list), 200
         except (PermissionError, jwt.exceptions.InvalidTokenError) as err:
@@ -151,6 +152,38 @@ def create_app():
         except SQLAlchemyError as err:
             app.logger.error("Error adding contact: %s", str(err))
             return "failed to add contact", 500
+
+    @app.route("/contacts/<username>/<label>/favourite", methods=["PUT"])
+    def set_favourite(username, label):
+        """Switch the favourite setting of a contact on or off.
+
+        request fields:
+        - is_favourite (boolean)
+        """
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header.split(" ")[-1]
+        else:
+            token = ""
+        try:
+            auth_payload = jwt.decode(
+                token, key=app.config["PUBLIC_KEY"], algorithms="RS256"
+            )
+            if username != auth_payload["user"]:
+                raise PermissionError
+            req = request.get_json(silent=True)
+            if not isinstance(req, dict) or not isinstance(req.get("is_favourite"), bool):
+                return "is_favourite must be true or false", 400
+            if not contacts_db.set_favourite(username, label, req["is_favourite"]):
+                return "contact not found", 404
+            app.logger.info("Updated favourite setting of a contact.")
+            return jsonify({"label": label, "is_favourite": req["is_favourite"]}), 200
+        except (PermissionError, jwt.exceptions.InvalidTokenError) as err:
+            app.logger.error("Error setting favourite: %s", str(err))
+            return "authentication denied", 401
+        except SQLAlchemyError as err:
+            app.logger.error("Error setting favourite: %s", str(err))
+            return "failed to update contact", 500
 
     def _validate_new_contact(req):
         """Check that this new contact request has valid fields"""
