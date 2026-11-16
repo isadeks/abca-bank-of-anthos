@@ -52,6 +52,7 @@ EXAMPLE_CONTACT_DB_OBJ = {
     "account_num": "1234567890",
     "routing_num": "123456789",
     "is_external": False,
+    "is_favorite": False,
 }
 
 EXAMPLE_CONTACT = {
