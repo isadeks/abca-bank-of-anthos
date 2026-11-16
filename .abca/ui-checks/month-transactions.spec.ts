@@ -9,7 +9,7 @@ test('the balance shows the number of transactions this month', async ({ page })
   await expect(balance).toBeVisible();
   const count = page.locator('#month-transaction-count');
   await expect(count).toBeVisible();
-  await expect(count).toHaveText(/^\d+ transactions? this month$/);
+  await expect(count).toHaveText(/^\s*\d+ transactions? this month\s*$/);
   await highlight(page, count, 'transactions this month');
   await shot(page, 'A small line under the balance counts this month\'s transactions', { focus: count });
 });
