@@ -187,7 +187,7 @@ class TestUserservice(unittest.TestCase):
         # assert 400 response code
         self.assertEqual(response.status_code, 400)
         # assert we get correct error message
-        self.assertEqual(response.data, b'passwords do not match')
+        self.assertEqual(response.data, b'The two passwords you entered do not match.')
 
     # mock check pw to return true to simulate correct password
     @patch('bcrypt.checkpw', return_value=True)

@@ -158,7 +158,7 @@ def create_app():
             raise UserWarning('username must contain 2-15 alphanumeric characters or underscores')
         # Check if passwords match
         if not req['password'] == req['password-repeat']:
-            raise UserWarning('passwords do not match')
+            raise UserWarning('The two passwords you entered do not match.')
 
     @app.route('/login', methods=['GET'])
     def login():
