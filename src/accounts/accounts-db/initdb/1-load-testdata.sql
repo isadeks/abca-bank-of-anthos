@@ -22,24 +22,24 @@ INSERT INTO users VALUES
 ('1077441377', 'eve', '\x243262243132244c48334f54422e70653274596d6834534b756673727563564b3848774630494d2f34717044746868366e42352e744b575978314e61', 'Eve', 'User', '2000-01-01', '-5', 'Bowling Green, New York City', 'NY', '10004', '111-22-3333')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO contacts VALUES
-('testuser', 'Alice', '1033623433', '883745000', 'false'),
-('testuser', 'Bob', '1055757655', '883745000', 'false'),
-('testuser', 'Eve', '1077441377', '883745000', 'false'),
-('alice', 'Testuser', '1011226111', '883745000', 'false'),
-('alice', 'Bob', '1055757655', '883745000', 'false'),
-('alice', 'Eve', '1077441377', '883745000', 'false'),
-('bob', 'Testuser', '1011226111', '883745000', 'false'),
-('bob', 'Alice', '1033623433', '883745000', 'false'),
-('bob', 'Eve', '1077441377', '883745000', 'false'),
-('eve', 'Testuser', '1011226111', '883745000', 'false'),
-('eve', 'Alice', '1033623433', '883745000', 'false'),
-('eve', 'Bob', '1055757655', '883745000', 'false')
+INSERT INTO contacts (username, label, account_num, routing_num, is_external, is_favorite) VALUES
+('testuser', 'Alice', '1033623433', '883745000', 'false', 'false'),
+('testuser', 'Bob', '1055757655', '883745000', 'false', 'false'),
+('testuser', 'Eve', '1077441377', '883745000', 'false', 'false'),
+('alice', 'Testuser', '1011226111', '883745000', 'false', 'false'),
+('alice', 'Bob', '1055757655', '883745000', 'false', 'false'),
+('alice', 'Eve', '1077441377', '883745000', 'false', 'false'),
+('bob', 'Testuser', '1011226111', '883745000', 'false', 'false'),
+('bob', 'Alice', '1033623433', '883745000', 'false', 'false'),
+('bob', 'Eve', '1077441377', '883745000', 'false', 'false'),
+('eve', 'Testuser', '1011226111', '883745000', 'false', 'false'),
+('eve', 'Alice', '1033623433', '883745000', 'false', 'false'),
+('eve', 'Bob', '1055757655', '883745000', 'false', 'false')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO contacts VALUES
-('testuser', 'External Bank', '9099791699', '808889588', 'true'),
-('alice', 'External Bank', '9099791699', '808889588', 'true'),
-('bob', 'External Bank', '9099791699', '808889588', 'true'),
-('eve', 'External Bank', '9099791699', '808889588', 'true')
+INSERT INTO contacts (username, label, account_num, routing_num, is_external, is_favorite) VALUES
+('testuser', 'External Bank', '9099791699', '808889588', 'true', 'false'),
+('alice', 'External Bank', '9099791699', '808889588', 'true', 'false'),
+('bob', 'External Bank', '9099791699', '808889588', 'true', 'false'),
+('eve', 'External Bank', '9099791699', '808889588', 'true', 'false')
 ON CONFLICT DO NOTHING;

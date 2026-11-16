@@ -44,7 +44,7 @@ add_external_account() {
   # Usage:  add_external_account "OWNER_USERNAME" "LABEL" "ACCOUNT" "ROUTING"
   echo "user $1 adding contact: $2"
   psql -X -v ON_ERROR_STOP=1 -v username="$1" -v label="$2" -v account="$3" -v routing="$4" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    INSERT INTO contacts VALUES (:'username', :'label', :'account', :'routing', 'true') ON CONFLICT DO NOTHING;
+    INSERT INTO contacts (username, label, account_num, routing_num, is_external, is_favorite) VALUES (:'username', :'label', :'account', :'routing', 'true', 'false') ON CONFLICT DO NOTHING;
 EOSQL
 }
 
@@ -53,7 +53,7 @@ add_contact() {
   # Usage:  add_contact "OWNER_USERNAME" "CONTACT_LABEL" "CONTACT_ACCOUNT"
   echo "user $1 adding external account: $2"
   psql -X -v ON_ERROR_STOP=1 -v username="$1" -v label="$2" -v account="$3" -v routing="$LOCAL_ROUTING_NUM" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    INSERT INTO contacts VALUES (:'username', :'label', :'account', :'routing', 'false') ON CONFLICT DO NOTHING;
+    INSERT INTO contacts (username, label, account_num, routing_num, is_external, is_favorite) VALUES (:'username', :'label', :'account', :'routing', 'false', 'false') ON CONFLICT DO NOTHING;
 EOSQL
 }
 

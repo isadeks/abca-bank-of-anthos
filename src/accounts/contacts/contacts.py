@@ -152,6 +152,46 @@ def create_app():
             app.logger.error("Error adding contact: %s", str(err))
             return "failed to add contact", 500
 
+    @app.route("/contacts/<username>/favorite", methods=["PUT"])
+    def set_favorite(username):
+        """Switch the favourite setting of a contact on or off.
+
+        request fields:
+        - label: the label of the contact
+        - is_favorite: true or false
+        """
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            token = auth_header.split(" ")[-1]
+        else:
+            token = ""
+        try:
+            auth_payload = jwt.decode(
+                token, key=app.config["PUBLIC_KEY"], algorithms="RS256"
+            )
+            if username != auth_payload["user"]:
+                raise PermissionError
+            req = request.get_json(silent=True)
+            if (not isinstance(req, dict)
+                    or not isinstance(req.get("label"), str)
+                    or not isinstance(req.get("is_favorite"), bool)):
+                raise UserWarning("label and boolean is_favorite are required")
+            if not contacts_db.set_favorite(
+                    username, bleach.clean(req["label"]), req["is_favorite"]):
+                return "contact not found", 404
+            app.logger.info("Successfully updated favourite setting.")
+            return jsonify({"label": req["label"],
+                            "is_favorite": req["is_favorite"]}), 200
+        except (PermissionError, jwt.exceptions.InvalidTokenError) as err:
+            app.logger.error("Error setting favourite: %s", str(err))
+            return "authentication denied", 401
+        except UserWarning as warn:
+            app.logger.error("Error setting favourite: %s", str(warn))
+            return str(warn), 400
+        except SQLAlchemyError as err:
+            app.logger.error("Error setting favourite: %s", str(err))
+            return "failed to update contact", 500
+
     def _validate_new_contact(req):
         """Check that this new contact request has valid fields"""
         app.logger.debug("validating add contact request: %s", str(req))
