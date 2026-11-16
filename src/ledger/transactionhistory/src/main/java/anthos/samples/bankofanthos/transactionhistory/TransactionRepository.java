@@ -14,6 +14,7 @@
 
 package anthos.samples.bankofanthos.transactionhistory;
 
+import java.time.LocalDateTime;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -69,4 +70,19 @@ public interface TransactionRepository
     @Query("SELECT t FROM Transaction t "
         + " WHERE t.transactionId > ?1 ORDER BY t.transactionId ASC")
     List<Transaction> findLatest(long latestTransaction);
+
+    /**
+     * Returns the total spent (money sent from the account) per stored
+     * category in the period [from, to), as rows of {category, cents}.
+     */
+    @Query(value = "SELECT CATEGORY, SUM(AMOUNT) FROM TRANSACTIONS "
+        + " WHERE FROM_ACCT = CAST(?1 AS CHAR(10)) "
+        + "   AND FROM_ROUTE = CAST(?2 AS CHAR(9)) "
+        + "   AND TIMESTAMP >= ?3 AND TIMESTAMP < ?4 "
+        + " GROUP BY CATEGORY",
+        nativeQuery = true)
+    List<Object[]> sumSpentByCategory(String accountNum,
+                                      String routingNum,
+                                      LocalDateTime from,
+                                      LocalDateTime to);
 }

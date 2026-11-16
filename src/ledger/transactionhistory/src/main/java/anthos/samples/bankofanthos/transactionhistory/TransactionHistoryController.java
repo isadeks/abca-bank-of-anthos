@@ -23,7 +23,12 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.cache.GuavaCacheMetrics;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Deque;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
@@ -36,6 +41,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -61,6 +67,7 @@ public final class TransactionHistoryController {
     @Value("${HISTORY_LIMIT:100}")
     private Integer historyLimit;
     private String version;
+    private String localRoutingNum;
 
     private JWTVerifier verifier;
     private LedgerReader ledgerReader;
@@ -80,6 +87,7 @@ public final class TransactionHistoryController {
             @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
             @Value("${VERSION}") final String version) {
         this.version = version;
+        this.localRoutingNum = localRoutingNum;
         // Initialize JWT verifier.
         this.verifier = verifier;
         // Initialize cache
@@ -168,10 +176,34 @@ public final class TransactionHistoryController {
      * @return             a list of transactions for this account, or
      *                     HTTP 400 if the account id is not numeric.
      */
+    public ResponseEntity<?> getTransactions(String bearerToken,
+            String accountId) {
+        return getTransactions(bearerToken, accountId, null);
+    }
+
+    /**
+     * Return the transactions of the account, optionally of one category.
+     *
+     * @param bearerToken  HTTP request 'Authorization' header
+     * @param accountId    the account to get transactions for.
+     * @param category     optional category; HTTP 400 if not a known one.
+     * @return             the transactions, newest first.
+     */
     @GetMapping("/transactions/{accountId}")
     public ResponseEntity<?> getTransactions(
             @RequestHeader("Authorization") String bearerToken,
-            @PathVariable String accountId) {
+            @PathVariable String accountId,
+            @RequestParam(value = "category", required = false)
+                    String category) {
+
+        String wanted = null;
+        if (category != null && !category.isBlank()) {
+            wanted = Transaction.normalizeCategory(category);
+            if (!wanted.equalsIgnoreCase(category.trim())) {
+                return new ResponseEntity<>("invalid category",
+                                                  HttpStatus.BAD_REQUEST);
+            }
+        }
 
         if (!ACCOUNT_ID_REGEX.matcher(accountId).matches()) {
             LOGGER.error("Failed to retrieve account transactions: "
@@ -206,8 +238,18 @@ public final class TransactionHistoryController {
                 }
             }
 
+            Collection<Transaction> result = historyList;
+            if (wanted != null) {
+                final String match = wanted;
+                result = new ArrayList<>();
+                for (Transaction t : historyList) {
+                    if (match.equals(t.getCategory())) {
+                        result.add(t);
+                    }
+                }
+            }
             return new ResponseEntity<Collection<Transaction>>(
-                    historyList, HttpStatus.OK);
+                    result, HttpStatus.OK);
         } catch (JWTVerificationException e) {
             LOGGER.error("Failed to retrieve account transactions: "
                 + "not authorized");
@@ -217,6 +259,56 @@ public final class TransactionHistoryController {
             LOGGER.error("Cache error");
             return new ResponseEntity<>("cache error",
                                               HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Return the total spent per category (in cents) from the account
+     * in the current month. All categories are present, 0 if unused.
+     *
+     * @param bearerToken  HTTP request 'Authorization' header
+     * @param accountId    the account to get the spending for.
+     * @return             a map of category to cents, or HTTP 400/401.
+     */
+    @GetMapping("/transactions/{accountId}/spending")
+    public ResponseEntity<?> getMonthlySpending(
+            @RequestHeader("Authorization") String bearerToken,
+            @PathVariable String accountId) {
+        if (!ACCOUNT_ID_REGEX.matcher(accountId).matches()) {
+            return new ResponseEntity<>("invalid account id",
+                                              HttpStatus.BAD_REQUEST);
+        }
+        if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
+            bearerToken = bearerToken.split("Bearer ")[1];
+        }
+        try {
+            DecodedJWT jwt = verifier.verify(bearerToken);
+            if (!accountId.equals(jwt.getClaim("acct").asString())) {
+                return new ResponseEntity<>("not authorized",
+                                                  HttpStatus.UNAUTHORIZED);
+            }
+            LocalDateTime monthStart = LocalDateTime.now()
+                .withDayOfMonth(1).toLocalDate().atStartOfDay();
+            List<Object[]> rows = dbRepo.sumSpentByCategory(accountId,
+                localRoutingNum, monthStart, monthStart.plusMonths(1));
+            Map<String, Long> totals = new LinkedHashMap<>();
+            for (String name : Transaction.CATEGORIES) {
+                totals.put(name, 0L);
+            }
+            if (rows != null) {
+                for (Object[] row : rows) {
+                    String name = Transaction.normalizeCategory(
+                        row[0] == null ? null : row[0].toString());
+                    long sum = row[1] == null
+                        ? 0L : ((Number) row[1]).longValue();
+                    totals.merge(name, sum, Long::sum);
+                }
+            }
+            return new ResponseEntity<Map<String, Long>>(
+                    totals, HttpStatus.OK);
+        } catch (JWTVerificationException e) {
+            return new ResponseEntity<>("not authorized",
+                                              HttpStatus.UNAUTHORIZED);
         }
     }
 }

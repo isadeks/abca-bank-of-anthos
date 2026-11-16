@@ -58,6 +58,14 @@ public final class Transaction {
     @JsonProperty("timestamp")
     private Date timestamp;
 
+    @Column(name = "CATEGORY", nullable = false, updatable = false)
+    @JsonProperty("category")
+    private String category = DEFAULT_CATEGORY;
+
+    public static final String DEFAULT_CATEGORY = "Other";
+    public static final java.util.List<String> CATEGORIES = java.util.List.of(
+        "Groceries", "Rent", "Transport", "Eating out", DEFAULT_CATEGORY);
+
     private static final double CENTS_PER_DOLLAR = 100.0;
 
     public long getTransactionId() {
@@ -82,6 +90,29 @@ public final class Transaction {
 
     public Integer getAmount() {
         return amount;
+    }
+
+    /**
+     * Category of the transaction; a missing or unknown one is "Other".
+     */
+    @JsonProperty("category")
+    public String getCategory() {
+        return normalizeCategory(category);
+    }
+
+    /**
+     * Maps a category to a known one (case-insensitive), else "Other".
+     */
+    public static String normalizeCategory(String value) {
+        if (value != null) {
+            String trimmed = value.trim();
+            for (String known : CATEGORIES) {
+                if (known.equalsIgnoreCase(trimmed)) {
+                    return known;
+                }
+            }
+        }
+        return DEFAULT_CATEGORY;
     }
     /**
      * String representation.
