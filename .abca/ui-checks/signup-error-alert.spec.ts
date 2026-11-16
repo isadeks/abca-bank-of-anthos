@@ -25,7 +25,10 @@ test('sign-up with an empty field shows the error above the form', async ({ page
   ]);
 
   const alert = page.locator('#signup-error');
-  await expect(alert).toContainText('Please fill in every field.');
+  // The preview runs the user service as released: DEM-313 changes its wording to
+  // 'Please fill in every field.', so accept either; what matters is that the
+  // user service's own message is shown and the generic login error is not.
+  await expect(alert).toContainText(/Please fill in every field\.|missing value for input field\(s\)/);
   await expect(page).toHaveURL(/\/signup$/);
   await highlight(page, alert, 'error from the user service');
   await shot(page, 'The sign-up page shows the error above the form', { focus: alert });
