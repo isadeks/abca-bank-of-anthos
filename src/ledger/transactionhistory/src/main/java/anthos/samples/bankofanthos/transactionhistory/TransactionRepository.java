@@ -14,6 +14,7 @@
 
 package anthos.samples.bankofanthos.transactionhistory;
 
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -69,4 +70,18 @@ public interface TransactionRepository
     @Query("SELECT t FROM Transaction t "
         + " WHERE t.transactionId > ?1 ORDER BY t.transactionId ASC")
     List<Transaction> findLatest(long latestTransaction);
+
+    /**
+     * Returns the transactions of an account within [start, end), oldest
+     * first.
+     */
+    @Query("SELECT t FROM Transaction t "
+        + " WHERE ((t.fromAccountNum = ?1 AND t.fromRoutingNum = ?2) "
+        + "     OR (t.toAccountNum = ?1 AND t.toRoutingNum = ?2)) "
+        + "   AND t.timestamp >= ?3 AND t.timestamp < ?4 "
+        + " ORDER BY t.timestamp ASC, t.transactionId ASC")
+    List<Transaction> findForAccountBetween(String accountNum,
+                                            String routingNum,
+                                            Date start,
+                                            Date end);
 }
