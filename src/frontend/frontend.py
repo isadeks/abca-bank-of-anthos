@@ -646,6 +646,18 @@ def create_app():
                 return _login_helper(request.form['username'],
                                      request.form['password'],
                                      request.args)
+            if resp.status_code == 400 and resp.text:
+                # show the userservice's reason on the sign-up page
+                app.logger.info('Sign-up rejected: %s', resp.text)
+                return render_template('signup.html',
+                                       error=resp.text,
+                                       bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                                       cluster_name=cluster_name,
+                                       cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                                       platform=platform,
+                                       platform_display_name=platform_display_name,
+                                       pod_name=pod_name,
+                                       pod_zone=pod_zone), 400
         except requests.exceptions.RequestException as err:
             app.logger.error('Error creating new user: %s', str(err))
         return redirect(url_for('login',
