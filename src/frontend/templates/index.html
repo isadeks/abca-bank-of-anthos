@@ -116,6 +116,36 @@ limitations under the License.
         </div>
       </div>
 
+      <!-- Spending this month, per category -->
+      <div class="row col-lg-12 mb-4 align-items-start">
+        <div class="col-lg-12">
+          <div class="card">
+            <div class="card-table-header">
+              <h4 class="card-header-title">Spending This Month</h4>
+            </div>
+            <div class="card-body" id="spending-breakdown">
+            {% if spending_bars is none %}
+              <p>Spending is currently unavailable.</p>
+            {% else %}
+              <ul class="list-unstyled mb-0">
+              {% for b in spending_bars %}
+                <li class="spending-row mb-2" data-category="{{ b.category }}">
+                  <div class="d-flex justify-content-between">
+                    <span class="spending-category">{{ b.category }}</span>
+                    <span class="spending-amount">{{ format_currency(b.cents) }}</span>
+                  </div>
+                  <div class="progress" style="height: 8px;">
+                    <div class="progress-bar spending-bar" role="progressbar" style="width: {{ b.percent }}%;" aria-valuenow="{{ b.percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+                  </div>
+                </li>
+              {% endfor %}
+              </ul>
+            {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Transaction History Table -->
       <div class="row col-lg-12 mb-4 align-items-start">
         <div class="col-lg-12">
@@ -127,13 +157,25 @@ limitations under the License.
                     Transaction History
                   </h4>
                 </div>
+                <div class="col-auto">
+                  <form id="category-filter-form" method="GET" action="/home" class="form-inline">
+                    <label class="mr-2" for="category-filter">Category</label>
+                    <select class="custom-select custom-select-sm" id="category-filter" name="category" onchange="this.form.submit()">
+                      <option value="">All</option>
+                      {% for c in categories %}
+                        <option value="{{ c }}"{% if c == selected_category %} selected{% endif %}>{{ c }}</option>
+                      {% endfor %}
+                    </select>
+                    <noscript><button type="submit" class="btn btn-sm btn-secondary ml-2">Filter</button></noscript>
+                  </form>
+                </div>
               </div>
             </div>
             <div class="table-responsive mb-0" id="transaction-table">
             {% if history is none %}
               <h4 class="card-table-header">Error: Could Not Load Transactions</h4>
             {% elif history|length == 0 %}
-              <h4 class="card-table-header">No Transactions Found</h4>
+              <h4 class="card-table-header">No Transactions Found{% if selected_category %} in {{ selected_category }}{% endif %}</h4>
             {% else %}
               <table class="table table-sm table-nowrap card-table">
                 <thead class="text-uppercase">
@@ -149,6 +191,9 @@ limitations under the License.
                     </th>
                     <th>
                       <a class="text-transaction-header">Label</a>
+                    </th>
+                    <th>
+                      <a class="text-transaction-header">Category</a>
                     </th>
                     <th class="text-right">
                       <a class="text-transaction-header">Amount</a>
@@ -175,6 +220,7 @@ limitations under the License.
                           <span class="transaction-label-none">None</span>
                         {% endif %}
                       </td>
+                      <td class="transaction-category">{{ t.category or 'Other' }}</td>
                       <td class="transaction-amount transaction-amount-credit">
                         +{{ format_currency(t.amount) }}
                       </td>
@@ -192,6 +238,7 @@ limitations under the License.
                           <span class="transaction-label-none">None</span>
                         {% endif %}
                       </td>
+                      <td class="transaction-category">{{ t.category or 'Other' }}</td>
                       <td class="transaction-amount transaction-amount-debit">
                         -{{ format_currency(t.amount) }}
                       </td>
@@ -342,6 +389,12 @@ limitations under the License.
                     </div>
                   </div>
                   <div class="col-md-10 offset-md-1">
+                    <label class="text-uppercase text-muted secondary-text mb-3" for="payment-category">Category</label>
+                    <select class="custom-select d-block w-100 mb-3" id="payment-category" name="category">
+                      {% for c in categories %}
+                        <option value="{{ c }}"{% if c == 'Other' %} selected{% endif %}>{{ c }}</option>
+                      {% endfor %}
+                    </select>
                     <label class="text-uppercase text-muted secondary-text mb-3" for="payment-amount">Transaction Amount</label>
                     <div class="input-group mb-3">
                       <div class="input-group-prepend mr-2">

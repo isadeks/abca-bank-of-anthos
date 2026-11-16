@@ -24,6 +24,7 @@ import os
 import socket
 from decimal import Decimal, DecimalException
 from time import sleep
+from urllib.parse import quote
 
 import requests
 from requests.exceptions import HTTPError, RequestException
@@ -50,6 +51,9 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+SPENDING_NAME = "spending"
+CATEGORIES = ["Groceries", "Rent", "Transport", "Eating out", "Other"]
+DEFAULT_CATEGORY = "Other"
 
 
 class TransactionError(UserWarning):
@@ -115,15 +119,20 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return _render_home(token, message=request.args.get('msg', None))
+        category = request.args.get('category', None)
+        if category not in CATEGORIES:
+            category = None
+        return _render_home(token, message=request.args.get('msg', None),
+                            category=category)
 
-    def _render_home(token, message=None, is_error=False, status=200):
+    def _render_home(token, message=None, is_error=False, status=200, category=None):
         """
         Renders the home page for a user with a valid token.
 
         Params: message - optional message shown in the alert banner
                 is_error - whether the message reports a failure
                 status - HTTP status code of the response
+                category - optional category to filter the history by
         """
         token_data = decode_token(token)
         display_name = token_data['name']
@@ -131,6 +140,10 @@ def create_app():
         account_id = token_data['acct']
 
         hed = {'Authorization': 'Bearer ' + token}
+
+        history_url = f'{app.config["HISTORY_URI"]}/{account_id}'
+        if category:
+            history_url += '?category=' + quote(category)
 
         api_calls = [
             # get balance
@@ -141,7 +154,13 @@ def create_app():
                     logger=app.logger),
             # get history
             ApiCall(display_name=TRANSACTION_LIST_NAME,
-                    api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
+                    api_request=ApiRequest(url=history_url,
+                                           headers=hed,
+                                           timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get this month's spending per category
+            ApiCall(display_name=SPENDING_NAME,
+                    api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}/spending',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger),
@@ -155,10 +174,11 @@ def create_app():
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
+                        SPENDING_NAME: None,
                         CONTACTS_NAME: []}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -175,8 +195,13 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        spending_bars = _spending_bars(api_response[SPENDING_NAME])
+
         return render_template('index.html',
                                account_id=account_id,
+                               categories=CATEGORIES,
+                               selected_category=category,
+                               spending_bars=spending_bars,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
                                cluster_name=cluster_name,
@@ -190,6 +215,23 @@ def create_app():
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
                                pod_zone=pod_zone), status
+
+    def _spending_bars(spending):
+        """
+        Turn the monthly spending per category (in cents) into bar list rows.
+
+        Returns None if the spending is unavailable, else a list of
+        {category, cents, percent} in the order of CATEGORIES, where percent
+        is the width of the bar relative to the largest category.
+        """
+        if not isinstance(spending, dict):
+            return None
+        cents = {c: max(int(spending.get(c) or 0), 0) for c in CATEGORIES}
+        largest = max(cents.values())
+        return [{'category': c,
+                 'cents': v,
+                 'percent': round(v * 100 / largest) if largest else 0}
+                for c, v in cents.items()]
 
     def _transaction_failed(token, kind, reason=None, status=400):
         """
@@ -260,6 +302,9 @@ def create_app():
                                  app.config['LOCAL_ROUTING'],
                                  False)
 
+            category = request.form.get('category', DEFAULT_CATEGORY)
+            if category not in CATEGORIES:
+                category = DEFAULT_CATEGORY
             user_input = request.form['amount']
             payment_amount = int(Decimal(user_input) * 100)
             transaction_data = {"fromAccountNum": account_id,
@@ -268,6 +313,9 @@ def create_app():
                                 "toRoutingNum": app.config['LOCAL_ROUTING'],
                                 "amount": payment_amount,
                                 "uuid": request.form['uuid']}
+            if category != DEFAULT_CATEGORY:
+                # the ledger stores "Other" when no category is sent
+                transaction_data["category"] = category
             _submit_transaction(transaction_data)
             app.logger.info('Payment initiated successfully.')
             return redirect(code=303,
