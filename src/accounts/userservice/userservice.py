@@ -149,9 +149,9 @@ def create_app():
             'ssn',
         )
         if any(f not in req for f in fields):
-            raise UserWarning('missing required field(s)')
+            raise UserWarning('Please fill in every field.')
         if any(not bool(req[f] or req[f].strip()) for f in fields):
-            raise UserWarning('missing value for input field(s)')
+            raise UserWarning('Please fill in every field.')
 
         # Verify username contains only 2-15 alphanumeric or underscore characters
         if not re.match(r"\A[a-zA-Z0-9_]{2,15}\Z", req['username']):
