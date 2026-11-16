@@ -63,7 +63,31 @@ document.addEventListener("DOMContentLoaded", function(event) {
   // Handle new account option in Send Payment modal
   document.querySelector("#payment-accounts").addEventListener("change", function(e) {
     RefreshModals();
+    RefreshFavoriteToggle();
   });
+
+  // Star / unstar the selected recipient
+  const favoriteToggle = document.querySelector("#favorite-toggle");
+  function RefreshFavoriteToggle() {
+    const option = document.querySelector("#payment-accounts").selectedOptions[0];
+    if (!option || !option.dataset.label) {
+      favoriteToggle.classList.add("hidden");
+      return;
+    }
+    favoriteToggle.classList.remove("hidden");
+    favoriteToggle.textContent = option.dataset.favorite === "true" ? "★ Unstar this contact" : "☆ Star this contact";
+  }
+  favoriteToggle.addEventListener("click", function() {
+    const option = document.querySelector("#payment-accounts").selectedOptions[0];
+    const body = new URLSearchParams({
+      label: option.dataset.label,
+      is_favorite: option.dataset.favorite === "true" ? "false" : "true",
+    });
+    fetch("favorite", {method: "POST", body: body}).then(function(resp) {
+      if (resp.ok) { window.location.reload(); }
+    });
+  });
+  RefreshFavoriteToggle();
 
   // Handle new account option in Deposit modal
   document.querySelector("#accounts").addEventListener("change", function(e) {

@@ -175,6 +175,11 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        # favourite contacts first, otherwise keeping the service's order
+        api_response[CONTACTS_NAME] = sorted(
+            api_response[CONTACTS_NAME],
+            key=lambda c: not c.get('is_favorite', False))
+
         return render_template('index.html',
                                account_id=account_id,
                                balance=api_response[BALANCE_NAME],
@@ -292,6 +297,39 @@ def create_app():
             return _transaction_failed(
                 token, 'Payment',
                 f'{request.form.get("amount", "")} is not a valid number')
+
+    @app.route('/favorite', methods=['POST'])
+    def favorite():
+        """
+        Stars or unstars a contact through the contacts service.
+
+        Form fields: label, is_favorite ('true' or 'false')
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error setting favourite: user is not authenticated.')
+            return abort(401)
+        label = request.form.get('label')
+        is_favorite = request.form.get('is_favorite')
+        if not label or is_favorite not in ('true', 'false'):
+            return 'label and is_favorite are required', 400
+        hed = {'Authorization': 'Bearer ' + token,
+               'content-type': 'application/json'}
+        url = '{}/{}/favorite'.format(app.config['CONTACTS_URI'],
+                                      decode_token(token)['user'])
+        try:
+            resp = requests.put(url=url,
+                                data=jsonify({'label': label,
+                                              'is_favorite': is_favorite == 'true'}).data,
+                                headers=hed,
+                                timeout=app.config['BACKEND_TIMEOUT'])
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError:
+            return resp.text, resp.status_code
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error setting favourite: %s', str(err))
+            return 'failed to update contact', 502
+        return '', 204
 
     @app.route('/deposit', methods=['POST'])
     def deposit():

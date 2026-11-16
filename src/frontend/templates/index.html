@@ -314,12 +314,13 @@ limitations under the License.
                     <select class="custom-select d-block w-100 mb-3" id="payment-accounts" name="account_num">
                       {% for account in contacts %}
                           {% if not account.is_external %}
-                              <option value="{{ account.account_num }}">{{ account.label }} - {{ account.account_num }}</option>
+                              <option value="{{ account.account_num }}" data-label="{{ account.label }}" data-favorite="{{ 'true' if account.is_favorite else 'false' }}">{% if account.is_favorite %}★ {% endif %}{{ account.label }} - {{ account.account_num }}</option>
                           {% endif %}
                       {% endfor %}
                       <option disabled>──────────</option>
                       <option value="add">New Recipient</option>
                     </select>
+                    <button type="button" id="favorite-toggle" class="btn btn-link p-0 mb-3 hidden"></button>
                     <div id="otherAccountInputs" class="hidden">
                       <div class="input-group mb-3">
                         <div class="input-group-prepend">
