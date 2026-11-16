@@ -76,6 +76,11 @@ limitations under the License.
                   <span class="h1 mb-0" id="current-balance">
                     {{ format_currency(balance) }}
                   </span>
+                  {% if month_transaction_count is not none %}
+                  <p class="small text-muted mb-0" id="month-transaction-count">
+                    {{ month_transaction_count }} transaction{{ '' if month_transaction_count == 1 else 's' }} this month
+                  </p>
+                  {% endif %}
                 </div>
               </div>
             </div>

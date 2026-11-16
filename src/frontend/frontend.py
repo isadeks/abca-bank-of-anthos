@@ -184,6 +184,8 @@ def create_app():
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
                                message=message,
+                               month_transaction_count=count_transactions_this_month(
+                                   api_response[TRANSACTION_LIST_NAME]),
                                message_is_error=is_error,
                                name=display_name,
                                platform=platform,
@@ -701,6 +703,25 @@ def create_app():
         # TODO: time zones?
         date = datetime.datetime.strptime(timestamp, app.config['TIMESTAMP_FORMAT'])
         return date.strftime('%b')
+
+    def count_transactions_this_month(history):
+        """ Number of transactions (either direction) in the current
+        calendar month (UTC); None if the history is unavailable """
+        if history is None:
+            return None
+        now = datetime.datetime.now(datetime.timezone.utc)
+        count = 0
+        for transaction in history:
+            try:
+                date = datetime.datetime.strptime(
+                    transaction['timestamp'], app.config['TIMESTAMP_FORMAT'])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if date.tzinfo is not None:
+                date = date.astimezone(datetime.timezone.utc)
+            if (date.year, date.month) == (now.year, now.month):
+                count += 1
+        return count
 
     def format_currency(int_amount):
         """ Format the input currency in a human readable way """
