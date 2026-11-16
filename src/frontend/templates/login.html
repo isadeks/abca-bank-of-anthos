@@ -55,6 +55,26 @@ limitations under the License.
                   {% else %}
                   <form id="login-form" class="needs-validation" novalidate="" method="POST" action="/login">
                   {% endif %}
+                    {% if mfa_token %}
+                    {% if mfa_error %}
+                    <div id="mfa-error" class="alert alert-danger mb-4" role="alert">
+                      <span class="error-icon mr-2 material-icons">error</span>{{ mfa_error }}
+                    </div>
+                    {% endif %}
+                    <input type="hidden" name="username" value="{{ default_user }}">
+                    <input type="hidden" name="mfa_token" value="{{ mfa_token }}">
+                    <p class="secondary-text text-muted">Two-factor sign-in is on for {{ default_user }}. Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+                    <label class="text-uppercase text-muted secondary-text" for="login-code">Code</label>
+                    <div class="input-group mt-2 mb-5">
+                      <div class="input-group-prepend mr-2">
+                        <span class="input-group-text"><span class="material-icons">security</span></span>
+                      </div>
+                      <input class="form-control" type="text" id="login-code" name="code" autocomplete="one-time-code" inputmode="text" autofocus required>
+                      <div class="invalid-feedback">
+                        Please enter your code.
+                      </div>
+                    </div>
+                    {% else %}
                     <label class="text-uppercase text-muted secondary-text" for="username">Username</label>
                     <div class="input-group mt-2d mb-5">
                       <div class="input-group-prepend mr-2">
@@ -75,11 +95,14 @@ limitations under the License.
                         Please enter your password.
                       </div>
                     </div>
+                    {% endif %}
                     <button class="btn btn-sign-in btn-block mb-4" type="submit">Sign in</button>
+                    {% if not mfa_token %}
                     <small class="text-uppercase secondary-text text-muted">
                       Not registered?
                     </small>
                     <a href="/signup" class="btn btn-secondary btn-block mt-2 mb-4" id="create-account-btn" type="button">Create an Account</a>
+                    {% endif %}
                   </form>
                 </div>
               </div>

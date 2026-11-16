@@ -1,0 +1,91 @@
+<!--
+Copyright 2020 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+
+<html lang="en">
+  <head>
+{% include 'shared/html_head.html' %}
+  </head>
+  <body>
+{% include 'shared/platform_banner.html' %}
+{% include 'shared/navigation.html' %}
+    <main class="container">
+      <div class="row d-flex align-items-end header header-body">
+        <div class="col-lg-4"><a href="/home" type="button" class="btn btn-secondary"><span class="mr-2 material-icons arrow-back">arrow_back</span>Back</a></div>
+      </div>
+      {% if message != None %}
+      <div class="row mt-4">
+        <div class="col-lg-8 offset-lg-2">
+          <div id="security-message" class="alert {% if message_is_error %}alert-danger{% else %}alert-success{% endif %}" role="alert">{{ message }}</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="row mt-4 mb-5">
+        <div class="col-lg-8 offset-lg-2">
+          <div class="card" id="security-card">
+            <div class="card-body">
+              <h2 class="header-title">Security</h2>
+              <h5 class="mt-3">Two-factor sign-in</h5>
+              {% if recovery_codes %}
+              <div id="recovery-codes-section">
+                <p>Two-factor sign-in is on. Save these recovery codes somewhere safe. Each works once if you lose your authenticator app. <strong>They will not be shown again.</strong></p>
+                <ul id="recovery-codes" class="list-unstyled">
+                  {% for code in recovery_codes %}
+                  <li><code>{{ code }}</code></li>
+                  {% endfor %}
+                </ul>
+                <a href="/security" class="btn btn-primary" id="recovery-codes-done">I have saved my codes</a>
+              </div>
+              {% elif setup %}
+              <div id="setup-section">
+                <p>Scan this QR code with an authenticator app, or enter the secret by hand. Then type the 6-digit code the app shows.</p>
+                <div id="totp-qr" class="mb-3">{{ qr_svg | safe }}</div>
+                <p>Secret: <code id="totp-secret">{{ setup.secret }}</code></p>
+                <form id="enable-form" method="POST" action="/security/enable">
+                  <input type="hidden" name="secret" value="{{ setup.secret }}">
+                  <input type="hidden" name="uri" value="{{ setup.uri }}">
+                  <label class="text-uppercase text-muted secondary-text" for="enable-code">6-digit code</label>
+                  <input class="form-control mb-3" type="text" id="enable-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required>
+                  <button class="btn btn-primary" type="submit" id="enable-submit">Turn on</button>
+                  <a href="/security" class="btn btn-secondary">Cancel</a>
+                </form>
+              </div>
+              {% elif enabled %}
+              <div id="enabled-section">
+                <p>Two-factor sign-in is <strong id="twofa-status">on</strong>. You have {{ codes_left }} recovery code{{ '' if codes_left == 1 else 's' }} left.</p>
+                <form id="disable-form" method="POST" action="/security/disable">
+                  <label class="text-uppercase text-muted secondary-text" for="disable-code">Code to confirm</label>
+                  <input class="form-control mb-3" type="text" id="disable-code" name="code" autocomplete="one-time-code" placeholder="6-digit code or recovery code" required>
+                  <button class="btn btn-secondary" type="submit" id="disable-submit">Turn off</button>
+                </form>
+              </div>
+              {% else %}
+              <div id="disabled-section">
+                <p>Two-factor sign-in is <strong id="twofa-status">off</strong>. Turn it on to ask for a code from an authenticator app after your password.</p>
+                <form method="POST" action="/security/setup">
+                  <button class="btn btn-primary" type="submit" id="setup-submit">Set up</button>
+                </form>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+{% include 'shared/footer.html' %}
+{% include 'shared/scripts.html' %}
+  </body>
+</html>

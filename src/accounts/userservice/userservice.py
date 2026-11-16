@@ -37,8 +37,14 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
+import totp
 from db import UserDb
 from trace_logging import add_trace_context
+
+ISSUER = 'Bank of Anthos'
+MFA_TOKEN_SECONDS = 300
+MFA_MAX_ATTEMPTS = 5
+MFA_LOCKOUT_SECONDS = 300
 
 def create_app():
     """Flask application factory to create instances
@@ -160,6 +166,78 @@ def create_app():
         if not req['password'] == req['password-repeat']:
             raise UserWarning('passwords do not match')
 
+    class RateLimited(Exception):
+        """Too many wrong second-factor codes"""
+
+    def _session_token(user):
+        full_name = '{} {}'.format(user['firstname'], user['lastname'])
+        exp_time = datetime.utcnow() + timedelta(seconds=app.config['EXPIRY_SECONDS'])
+        payload = {
+            'user': user['username'],
+            'acct': user['accountid'],
+            'name': full_name,
+            'iat': datetime.utcnow(),
+            'exp': exp_time,
+        }
+        app.logger.debug('Creating jwt token.')
+        return jwt.encode(payload, app.config['PRIVATE_KEY'], algorithm='RS256')
+
+    def _key(purpose):
+        material = app.config['PRIVATE_KEY']
+        if isinstance(material, str):
+            material = material.encode('utf-8')
+        return totp.derive_key(material, purpose)
+
+    def _issue_mfa_token(username):
+        """Short-lived proof that the password was accepted. It is signed with
+        a symmetric key and a different claim set, so it can never be taken
+        for a session token (RS256)."""
+        payload = {
+            'purpose': 'mfa',
+            'user': username,
+            'exp': datetime.utcnow() + timedelta(seconds=MFA_TOKEN_SECONDS),
+        }
+        return jwt.encode(payload, _key('mfa-token'), algorithm='HS256')
+
+    def _check_mfa_token(mfa_token, username):
+        try:
+            claims = jwt.decode(mfa_token, _key('mfa-token'), algorithms=['HS256'])
+        except jwt.InvalidTokenError as err:
+            raise PermissionError('invalid login') from err
+        if claims.get('purpose') != 'mfa' or claims.get('user') != username:
+            raise PermissionError('invalid login')
+
+    def _check_second_factor(username, mfa, code):
+        """Accept a TOTP code or an unused recovery code, with rate limiting.
+
+        Updates the stored state. Raises RateLimited, or PermissionError for
+        a wrong code. Codes and secrets are never logged.
+        """
+        now = datetime.utcnow()
+        locked_until = mfa.get('locked_until')
+        if locked_until is not None and locked_until > now:
+            raise RateLimited('too many attempts, try again later')
+
+        code = (code or '').strip()
+        secret = totp.decrypt_secret(mfa['secret_enc'], _key('totp-secret-material'))
+        step = None
+        if secret is not None:
+            step = totp.verify_totp(secret, code, last_step=mfa.get('last_step'))
+        if step is not None:
+            users_db.save_mfa(username, {
+                'last_step': step, 'failed_attempts': 0, 'locked_until': None})
+            return
+        recovery = list(mfa.get('recovery_hashes') or [])
+        digest = totp.hash_recovery_code(code, _key('recovery-code'))
+        if digest in recovery:
+            recovery.remove(digest)
+            users_db.save_mfa(username, {
+                'recovery_hashes': recovery, 'failed_attempts': 0, 'locked_until': None})
+            return
+
+        _record_failure(username, mfa)
+        raise PermissionError('invalid code')
+
     @app.route('/login', methods=['GET'])
     def login():
         """Login a user and return a JWT token
@@ -168,13 +246,19 @@ def create_app():
 
         token expiry time determined by environment variable
 
+        If the user turned on two-factor sign-in, a correct password only
+        returns 401 {"mfa_required": true, "mfa_token": ...}. The JWT is
+        issued once the request is repeated with that mfa_token and a
+        6-digit (or recovery) code instead of the password.
+
         request fields:
         - username
         - password
+        - mfa_token, code (second step only)
         """
         app.logger.debug('Sanitizing login input.')
         username = bleach.clean(request.args.get('username'))
-        password = bleach.clean(request.args.get('password'))
+        mfa_token = request.args.get('mfa_token')
 
         # Get user data
         try:
@@ -183,34 +267,175 @@ def create_app():
             if user is None:
                 raise LookupError('user {} does not exist'.format(username))
 
-            # Validate the password
-            app.logger.debug('Validating the password.')
-            if not bcrypt.checkpw(password.encode('utf-8'), user['passhash']):
-                raise PermissionError('invalid login')
+            if mfa_token is not None:
+                _check_mfa_token(mfa_token, username)
+                mfa = users_db.get_mfa(username)
+                if not (isinstance(mfa, dict) and mfa.get('enabled')):
+                    raise PermissionError('invalid login')
+                _check_second_factor(username, mfa, request.args.get('code'))
+            else:
+                password = bleach.clean(request.args.get('password'))
+                # Validate the password
+                app.logger.debug('Validating the password.')
+                if not bcrypt.checkpw(password.encode('utf-8'), user['passhash']):
+                    raise PermissionError('invalid login')
+                mfa = users_db.get_mfa(username)
+                if isinstance(mfa, dict) and mfa.get('enabled'):
+                    return jsonify({'mfa_required': True,
+                                    'mfa_token': _issue_mfa_token(username)}), 401
 
-            full_name = '{} {}'.format(user['firstname'], user['lastname'])
-            exp_time = datetime.utcnow() + timedelta(seconds=app.config['EXPIRY_SECONDS'])
-            payload = {
-                'user': username,
-                'acct': user['accountid'],
-                'name': full_name,
-                'iat': datetime.utcnow(),
-                'exp': exp_time,
-            }
-            app.logger.debug('Creating jwt token.')
-            token = jwt.encode(payload, app.config['PRIVATE_KEY'], algorithm='RS256')
+            token = _session_token(user)
             app.logger.info('Login Successful.')
             return jsonify({'token': token}), 200
 
         except LookupError as err:
             app.logger.error('Error logging in: %s', str(err))
             return str(err), 404
+        except RateLimited as err:
+            app.logger.error('Error logging in: %s', str(err))
+            return str(err), 429
         except PermissionError as err:
             app.logger.error('Error logging in: %s', str(err))
             return str(err), 401
         except SQLAlchemyError as err:
             app.logger.error('Error logging in: %s', str(err))
             return 'failed to retrieve user information', 500
+
+    def _authenticated_user():
+        """The username in the request's bearer JWT, or None"""
+        header = request.headers.get('Authorization', '')
+        if not header.startswith('Bearer '):
+            return None
+        try:
+            claims = jwt.decode(header[len('Bearer '):], app.config['PUBLIC_KEY'],
+                                algorithms=['RS256'])
+        except jwt.InvalidTokenError:
+            return None
+        return claims.get('user')
+
+    @app.route('/2fa', methods=['GET'])
+    def mfa_status():
+        """Whether two-factor sign-in is on for the signed-in user.
+
+        Return: {"enabled": bool, "recovery_codes_left": int}
+        """
+        username = _authenticated_user()
+        if username is None:
+            return 'unauthorized', 401
+        try:
+            mfa = users_db.get_mfa(username)
+        except SQLAlchemyError as err:
+            app.logger.error('Error reading 2FA state: %s', str(err))
+            return 'failed to retrieve 2FA state', 500
+        enabled = bool(isinstance(mfa, dict) and mfa.get('enabled'))
+        left = len(mfa.get('recovery_hashes') or []) if enabled else 0
+        return jsonify({'enabled': enabled, 'recovery_codes_left': left}), 200
+
+    @app.route('/2fa/setup', methods=['POST'])
+    def mfa_setup():
+        """Start setting up 2FA: create a secret that is not active until
+        confirmed with /2fa/enable.
+
+        Return: {"secret": ..., "uri": otpauth:// URI}
+        """
+        username = _authenticated_user()
+        if username is None:
+            return 'unauthorized', 401
+        try:
+            mfa = users_db.get_mfa(username)
+            if isinstance(mfa, dict) and mfa.get('enabled'):
+                return '2FA is already enabled', 409
+            secret = totp.new_secret()
+            users_db.save_mfa(username, {
+                'secret_enc': totp.encrypt_secret(secret, _key('totp-secret-material')),
+                'enabled': False,
+                'recovery_hashes': [],
+                'last_step': None,
+                'failed_attempts': 0,
+                'locked_until': None,
+            })
+        except SQLAlchemyError as err:
+            app.logger.error('Error setting up 2FA: %s', str(err))
+            return 'failed to set up 2FA', 500
+        app.logger.info('Started 2FA setup.')
+        return jsonify({
+            'secret': secret,
+            'uri': totp.provisioning_uri(secret, username, ISSUER),
+        }), 200
+
+    @app.route('/2fa/enable', methods=['POST'])
+    def mfa_enable():
+        """Turn 2FA on by confirming a code from the authenticator app.
+
+        request fields:
+        - code
+
+        Return: {"recovery_codes": [...]} - shown only this once
+        """
+        username = _authenticated_user()
+        if username is None:
+            return 'unauthorized', 401
+        try:
+            mfa = users_db.get_mfa(username)
+            if not isinstance(mfa, dict) or mfa.get('enabled'):
+                return 'no 2FA setup in progress', 409
+            locked_until = mfa.get('locked_until')
+            if locked_until is not None and locked_until > datetime.utcnow():
+                return 'too many attempts, try again later', 429
+            secret = totp.decrypt_secret(mfa['secret_enc'], _key('totp-secret-material'))
+            step = totp.verify_totp(secret, (request.form.get('code') or '').strip()) \
+                if secret else None
+            if step is None:
+                _record_failure(username, mfa)
+                return 'invalid code', 401
+            codes = totp.new_recovery_codes()
+            users_db.save_mfa(username, {
+                'enabled': True,
+                'last_step': step,
+                'failed_attempts': 0,
+                'locked_until': None,
+                'recovery_hashes': [totp.hash_recovery_code(c, _key('recovery-code'))
+                                    for c in codes],
+            })
+        except SQLAlchemyError as err:
+            app.logger.error('Error enabling 2FA: %s', str(err))
+            return 'failed to enable 2FA', 500
+        app.logger.info('Enabled 2FA.')
+        return jsonify({'recovery_codes': codes}), 200
+
+    def _record_failure(username, mfa):
+        failed = (mfa.get('failed_attempts') or 0) + 1
+        values = {'failed_attempts': failed}
+        if failed >= MFA_MAX_ATTEMPTS:
+            values = {'failed_attempts': 0,
+                      'locked_until': datetime.utcnow() + timedelta(seconds=MFA_LOCKOUT_SECONDS)}
+        users_db.save_mfa(username, values)
+
+    @app.route('/2fa/disable', methods=['POST'])
+    def mfa_disable():
+        """Turn 2FA off after confirming a TOTP or recovery code.
+
+        request fields:
+        - code
+        """
+        username = _authenticated_user()
+        if username is None:
+            return 'unauthorized', 401
+        try:
+            mfa = users_db.get_mfa(username)
+            if not (isinstance(mfa, dict) and mfa.get('enabled')):
+                return '2FA is not enabled', 409
+            _check_second_factor(username, mfa, request.form.get('code'))
+            users_db.delete_mfa(username)
+        except RateLimited as err:
+            return str(err), 429
+        except PermissionError as err:
+            return str(err), 401
+        except SQLAlchemyError as err:
+            app.logger.error('Error disabling 2FA: %s', str(err))
+            return 'failed to disable 2FA', 500
+        app.logger.info('Disabled 2FA.')
+        return jsonify({}), 200
 
     @atexit.register
     def _shutdown():
@@ -253,6 +478,10 @@ def create_app():
     except OperationalError:
         app.logger.critical("users_db database connection failed")
         sys.exit(1)
+    try:
+        users_db.create_mfa_table()
+    except SQLAlchemyError:
+        app.logger.warning("could not ensure the 2FA table exists")
     return app
 
 

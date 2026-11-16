@@ -21,11 +21,13 @@ import datetime
 import json
 import logging
 import os
+import re
 import socket
 from decimal import Decimal, DecimalException
 from time import sleep
 
 import requests
+import segno
 from requests.exceptions import HTTPError, RequestException
 import jwt
 from flask import Flask, abort, jsonify, make_response, redirect, \
@@ -486,8 +488,15 @@ def create_app():
         """
         Submits login request to userservice and saves resulting token
 
-        Fails if userservice does not accept input username and password
+        Fails if userservice does not accept input username and password.
+        If the user has two-factor sign-in on, the password step shows a
+        form for the 6-digit (or recovery) code, which is submitted here too.
         """
+        if request.form.get('mfa_token'):
+            return _login_second_factor(request.form['username'],
+                                        request.form['mfa_token'],
+                                        request.form.get('code', ''),
+                                        request.args)
         return _login_helper(request.form['username'],
                              request.form['password'],
                              request.args)
@@ -498,36 +507,212 @@ def create_app():
             req = requests.get(url=app.config["LOGIN_URI"],
                                params={'username': username, 'password': password},
                                timeout=app.config['BACKEND_TIMEOUT']*2)
+            if req.status_code == 401 and _mfa_challenge(req):
+                return _render_second_factor(username, _mfa_challenge(req))
             req.raise_for_status()  # Raise on HTTP Status code 4XX or 5XX
-
-            # login success
-            token = req.json()['token']
-            claims = decode_token(token)
-            max_age = claims['exp'] - claims['iat']
-
-            if ('response_type' in request_args and
-                'state' in request_args and
-                'redirect_uri' in request_args and
-                    request_args['response_type'] == 'code'):
-                resp = make_response(redirect(url_for('consent',
-                                                      state=request_args['state'],
-                                                      redirect_uri=request_args['redirect_uri'],
-                                                      app_name=request_args['app_name'],
-                                                      _external=True,
-                                                      _scheme=app.config['SCHEME'])))
-            else:
-                resp = make_response(redirect(url_for('home',
-                                                      _external=True,
-                                                      _scheme=app.config['SCHEME'])))
-            resp.set_cookie(app.config['TOKEN_NAME'], token, max_age=max_age)
-            app.logger.info('Successfully logged in.')
-            return resp
+            return _finish_login(req.json()['token'], request_args)
         except (RequestException, HTTPError) as err:
             app.logger.error('Error logging in: %s', str(err))
         return redirect(url_for('login',
                                 msg='Login Failed',
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
+
+    def _mfa_challenge(req):
+        """The mfa_token of a "second factor required" response, or None"""
+        try:
+            body = req.json()
+        except ValueError:
+            return None
+        if isinstance(body, dict) and body.get('mfa_required'):
+            return body.get('mfa_token')
+        return None
+
+    def _login_second_factor(username, mfa_token, code, request_args):
+        try:
+            req = requests.get(url=app.config["LOGIN_URI"],
+                               params={'username': username,
+                                       'mfa_token': mfa_token,
+                                       'code': code},
+                               timeout=app.config['BACKEND_TIMEOUT']*2)
+            if req.status_code == 429:
+                return _render_second_factor(
+                    username, mfa_token, 'Too many attempts. Try again in a few minutes.')
+            if req.status_code == 401 and req.text == 'invalid code':
+                return _render_second_factor(
+                    username, mfa_token, 'That code was not accepted.')
+            req.raise_for_status()
+            return _finish_login(req.json()['token'], request_args)
+        except (RequestException, HTTPError) as err:
+            app.logger.error('Error logging in: %s', str(err))
+        return redirect(url_for('login',
+                                msg='Login Failed',
+                                _external=True,
+                                _scheme=app.config['SCHEME']))
+
+    def _render_second_factor(username, mfa_token, error=None):
+        """The login page asking for the second factor"""
+        args = request.args
+        return render_template('login.html',
+                               app_name=args.get('app_name'),
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cluster_name=cluster_name,
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               mfa_token=mfa_token,
+                               mfa_error=error,
+                               default_user=username,
+                               platform=platform,
+                               platform_display_name=platform_display_name,
+                               pod_name=pod_name,
+                               pod_zone=pod_zone,
+                               redirect_uri=args.get('redirect_uri'),
+                               response_type=args.get('response_type'),
+                               state=args.get('state')), (401 if error else 200)
+
+    def _finish_login(token, request_args):
+        """Set the session cookie and redirect after a successful sign-in"""
+        claims = decode_token(token)
+        max_age = claims['exp'] - claims['iat']
+
+        if ('response_type' in request_args and
+            'state' in request_args and
+            'redirect_uri' in request_args and
+                request_args['response_type'] == 'code'):
+            resp = make_response(redirect(url_for('consent',
+                                                  state=request_args['state'],
+                                                  redirect_uri=request_args['redirect_uri'],
+                                                  app_name=request_args['app_name'],
+                                                  _external=True,
+                                                  _scheme=app.config['SCHEME'])))
+        else:
+            resp = make_response(redirect(url_for('home',
+                                                  _external=True,
+                                                  _scheme=app.config['SCHEME'])))
+        resp.set_cookie(app.config['TOKEN_NAME'], token, max_age=max_age)
+        app.logger.info('Successfully logged in.')
+        return resp
+
+    @app.route('/security', methods=['GET'])
+    def security_page():
+        """
+        Renders the security page, where two-factor sign-in is turned on and
+        off. Redirects to /login if token is not valid
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        return _render_security(token)
+
+    def _twofa_call(token, path, data=None):
+        """Call the userservice 2FA API with the user's token"""
+        url = app.config['TWOFA_URI'] + path
+        headers = {'Authorization': 'Bearer ' + token}
+        timeout = app.config['BACKEND_TIMEOUT']
+        if data is None and path == '':
+            return requests.get(url, headers=headers, timeout=timeout)
+        return requests.post(url, data=data or {}, headers=headers, timeout=timeout)
+
+    def _render_security(token, message=None, is_error=False, status=200,
+                         setup=None, recovery_codes=None):
+        """
+        Renders the security page.
+
+        Params: setup - {'secret': ..., 'uri': ...} while 2FA is being set up
+                recovery_codes - the new recovery codes, shown only once
+        """
+        enabled = False
+        codes_left = 0
+        try:
+            resp = _twofa_call(token, '')
+            resp.raise_for_status()
+            enabled = bool(resp.json().get('enabled'))
+            codes_left = resp.json().get('recovery_codes_left', 0)
+        except (RequestException, HTTPError, ValueError) as err:
+            app.logger.error('Error getting 2FA state: %s', str(err))
+            message, is_error, status = 'Could not load your security settings.', True, 502
+        qr_svg = None
+        if setup:
+            qr_svg = segno.make(setup['uri'], error='m').svg_inline(scale=5, dark='#000')
+        return render_template('security.html',
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cluster_name=cluster_name,
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               name=decode_token(token)['name'],
+                               enabled=enabled,
+                               codes_left=codes_left,
+                               setup=setup,
+                               qr_svg=qr_svg,
+                               recovery_codes=recovery_codes,
+                               message=message,
+                               message_is_error=is_error,
+                               platform=platform,
+                               platform_display_name=platform_display_name,
+                               pod_name=pod_name,
+                               pod_zone=pod_zone), status
+
+    def _security_action(path, handler):
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        try:
+            return handler(token)
+        except (RequestException, HTTPError) as err:
+            app.logger.error('Error updating 2FA (%s): %s', path, str(err))
+            return _render_security(token, 'Could not reach the sign-in service.',
+                                    True, 502)
+
+    @app.route('/security/setup', methods=['POST'])
+    def security_setup():
+        """Starts turning on two-factor sign-in: shows the QR code and secret"""
+        def handle(token):
+            resp = _twofa_call(token, '/setup', {})
+            if resp.status_code != 200:
+                return _render_security(token, resp.text or 'Setup failed.', True,
+                                        resp.status_code)
+            return _render_security(token, setup=resp.json())
+        return _security_action('setup', handle)
+
+    @app.route('/security/enable', methods=['POST'])
+    def security_enable():
+        """Confirms the first code and shows the recovery codes once"""
+        def handle(token):
+            resp = _twofa_call(token, '/enable', {'code': request.form.get('code', '')})
+            if resp.status_code == 200:
+                return _render_security(
+                    token, 'Two-factor sign-in is on.',
+                    recovery_codes=resp.json()['recovery_codes'])
+            if resp.status_code == 401:
+                # The pending secret is unchanged, so show the same QR code again
+                secret = request.form.get('secret', '')
+                uri = request.form.get('uri', '')
+                setup = {'secret': secret, 'uri': uri} \
+                    if re.fullmatch(r'[A-Z2-7]{16,64}', secret) \
+                    and uri.startswith('otpauth://totp/') else None
+                return _render_security(token, 'That code was not accepted.', True,
+                                        401, setup=setup)
+            return _render_security(token, resp.text or 'Could not turn on 2FA.', True,
+                                    resp.status_code)
+        return _security_action('enable', handle)
+
+    @app.route('/security/disable', methods=['POST'])
+    def security_disable():
+        """Turns two-factor sign-in off after confirming a code"""
+        def handle(token):
+            resp = _twofa_call(token, '/disable', {'code': request.form.get('code', '')})
+            if resp.status_code == 200:
+                return _render_security(token, 'Two-factor sign-in is off.')
+            if resp.status_code == 401:
+                return _render_security(token, 'That code was not accepted.', True, 401)
+            if resp.status_code == 429:
+                return _render_security(
+                    token, 'Too many attempts. Try again in a few minutes.', True, 429)
+            return _render_security(token, resp.text or 'Could not turn off 2FA.', True,
+                                    resp.status_code)
+        return _security_action('disable', handle)
 
     @app.route("/consent", methods=['GET'])
     def consent_page():
@@ -721,6 +906,8 @@ def create_app():
     app.config["HISTORY_URI"] = 'http://{}/transactions'.format(
         os.environ.get('HISTORY_API_ADDR'))
     app.config["LOGIN_URI"] = 'http://{}/login'.format(
+        os.environ.get('USERSERVICE_API_ADDR'))
+    app.config["TWOFA_URI"] = 'http://{}/2fa'.format(
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["CONTACTS_URI"] = 'http://{}/contacts'.format(
         os.environ.get('CONTACTS_API_ADDR'))

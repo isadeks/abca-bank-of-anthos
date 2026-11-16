@@ -44,3 +44,16 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE INDEX IF NOT EXISTS idx_contacts_username ON contacts (username);
 
+
+-- Optional two-factor sign-in (TOTP). Secrets are stored encrypted and
+-- recovery codes as keyed hashes.
+CREATE TABLE IF NOT EXISTS user_totp (
+  username VARCHAR(64) PRIMARY KEY,
+  secret_enc BYTEA NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  recovery_hashes VARCHAR[] NOT NULL DEFAULT '{}',
+  last_step BIGINT,
+  failed_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMP,
+  FOREIGN KEY (username) REFERENCES users(username)
+);

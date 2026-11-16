@@ -18,7 +18,8 @@ db manages interactions with the underlying database
 
 import logging
 import random
-from sqlalchemy import create_engine, MetaData, Table, Column, String, Date, LargeBinary
+from sqlalchemy import (create_engine, MetaData, Table, Column, String, Date, LargeBinary,
+                        Boolean, Integer, BigInteger, DateTime, ARRAY)
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 class UserDb:
@@ -30,9 +31,10 @@ class UserDb:
     def __init__(self, uri, logger=logging):
         self.engine = create_engine(uri)
         self.logger = logger
+        metadata = MetaData()
         self.users_table = Table(
             'users',
-            MetaData(),
+            metadata,
             Column('accountid', String, primary_key=True),
             Column('username', String, unique=True, nullable=False),
             Column('passhash', LargeBinary, nullable=False),
@@ -44,6 +46,18 @@ class UserDb:
             Column('state', String, nullable=False),
             Column('zip', String, nullable=False),
             Column('ssn', String, nullable=False),
+        )
+        # Two-factor sign-in state, one row per user that started setting it up
+        self.mfa_table = Table(
+            'user_totp',
+            metadata,
+            Column('username', String, primary_key=True),
+            Column('secret_enc', LargeBinary, nullable=False),
+            Column('enabled', Boolean, nullable=False, default=False),
+            Column('recovery_hashes', ARRAY(String), nullable=False),
+            Column('last_step', BigInteger),
+            Column('failed_attempts', Integer, nullable=False, default=0),
+            Column('locked_until', DateTime),
         )
 
         # Set up tracing autoinstrumentation for sqlalchemy
@@ -99,3 +113,32 @@ class UserDb:
             result = conn.execute(statement).first()
         self.logger.debug('RESULT: fetched user data for %s', username)
         return dict(result._mapping) if result is not None else None
+
+    def create_mfa_table(self):
+        """Create the two-factor table if the database predates it."""
+        self.mfa_table.create(self.engine, checkfirst=True)
+
+    def get_mfa(self, username):
+        """Get the two-factor state of a user, or None if there is none."""
+        statement = self.mfa_table.select().where(self.mfa_table.c.username == username)
+        self.logger.debug('QUERY: %s', str(statement))
+        with self.engine.connect() as conn:
+            result = conn.execute(statement).first()
+        return dict(result._mapping) if result is not None else None
+
+    def save_mfa(self, username, values):
+        """Insert or update the two-factor state of a user.
+
+        Params: values - columns of the user_totp table to set
+        """
+        with self.engine.begin() as conn:
+            update = self.mfa_table.update().where(
+                self.mfa_table.c.username == username).values(values)
+            if conn.execute(update).rowcount == 0:
+                conn.execute(self.mfa_table.insert().values(username=username, **values))
+
+    def delete_mfa(self, username):
+        """Remove the two-factor state of a user."""
+        statement = self.mfa_table.delete().where(self.mfa_table.c.username == username)
+        with self.engine.begin() as conn:
+            conn.execute(statement)
