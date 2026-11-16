@@ -85,6 +85,18 @@ create_accounts() {
   add_external_account "alice" "External Bank" "9099791699" "808889588"
   add_external_account "bob" "External Bank" "9099791699" "808889588"
   add_external_account "eve" "External Bank" "9099791699" "808889588"
+
+  # A couple of demo favourites
+  mark_favourite "testuser" "Alice"
+  mark_favourite "testuser" "External Bank"
+}
+
+mark_favourite() {
+  # Usage:  mark_favourite "OWNER_USERNAME" "CONTACT_LABEL"
+  echo "user $1 marking favourite: $2"
+  psql -X -v ON_ERROR_STOP=1 -v username="$1" -v label="$2" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    UPDATE contacts SET is_favourite = TRUE WHERE username = :'username' AND label = :'label';
+EOSQL
 }
 
 
