@@ -65,6 +65,7 @@ create_accounts() {
   add_user "1033623433" "alice" "Alice"
   add_user "1055757655" "bob" "Bob"
   add_user "1077441377" "eve" "Eve"
+  add_user "1099887766" "carol" "Carol"
 
   # Make everyone contacts of each other
   add_contact "testuser" "Alice" "1033623433"
@@ -80,11 +81,21 @@ create_accounts() {
   add_contact "eve" "Alice" "1033623433"
   add_contact "eve" "Bob" "1055757655"
 
+  add_contact "carol" "Testuser" "1011226111"
+  add_contact "carol" "Alice" "1033623433"
+  add_contact "carol" "Bob" "1055757655"
+  add_contact "carol" "Eve" "1077441377"
+  add_contact "testuser" "Carol" "1099887766"
+  add_contact "alice" "Carol" "1099887766"
+  add_contact "bob" "Carol" "1099887766"
+  add_contact "eve" "Carol" "1099887766"
+
   # Add external accounts
   add_external_account "testuser" "External Bank" "9099791699" "808889588"
   add_external_account "alice" "External Bank" "9099791699" "808889588"
   add_external_account "bob" "External Bank" "9099791699" "808889588"
   add_external_account "eve" "External Bank" "9099791699" "808889588"
+  add_external_account "carol" "External Bank" "9099791699" "808889588"
 }
 
 
