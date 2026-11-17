@@ -98,4 +98,9 @@ document.addEventListener("DOMContentLoaded", function(event) {
       document.querySelector("#deposit-uuid").value = uuidv4();
   }
   RefreshModals();
+
+  // Each savings goal form carries its own transaction id
+  document.querySelectorAll(".goal-uuid").forEach(function (input) {
+    input.value = uuidv4();
+  });
 });
