@@ -9,7 +9,15 @@ test('place a foreign currency order and see it tracked', async ({ page }) => {
   const quote = page.locator('#fx-quote');
   const unavailable = page.locator('#fx-error');
   await expect(quote.or(unavailable)).toBeVisible();
-  test.skip(!(await quote.isVisible()), 'live exchange rates are not reachable from the preview');
+  if (!(await quote.isVisible())) {
+    // Live rates cannot be reached from here: no order can be placed, and the orders page still works.
+    await expect(unavailable).toContainText('unavailable');
+    await shot(page, 'Without exchange rates no quote is given, so no order can be placed', { focus: unavailable });
+    await page.goto('/currency-orders');
+    await expect(page.locator('#orders-title')).toHaveText('My currency orders');
+    await expect(page.locator('#orders-table').or(page.locator('#orders-empty'))).toBeVisible();
+    return;
+  }
   await highlight(page, quote, 'quote');
   await shot(page, 'The quote now offers to place the order', { focus: quote });
 
