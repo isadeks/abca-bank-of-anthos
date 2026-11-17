@@ -87,7 +87,7 @@ class TestContacts(unittest.TestCase):
         # assert 200 response code
         self.assertEqual(response.status_code, 200)
         # assert both versions are equal
-        self.assertEqual(response.data, version.encode())
+        self.assertEqual(response.data, f"contacts {version}".encode())
 
     def test_ready_endpoint_200_status_code_ok_string(self):
         """test if correct response is returned from readiness probe"""
