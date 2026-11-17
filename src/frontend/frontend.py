@@ -50,6 +50,8 @@ from trace_logging import add_trace_context
 BALANCE_NAME = "balance"
 CONTACTS_NAME = "contacts"
 TRANSACTION_LIST_NAME = "transaction_list"
+GOALS_NAME = "goals"
+MAX_GOAL_NAME_LENGTH = 40
 
 
 class TransactionError(UserWarning):
@@ -150,15 +152,22 @@ def create_app():
                     api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{username}',
                                            headers=hed,
                                            timeout=app.config['BACKEND_TIMEOUT']),
+                    logger=app.logger),
+            # get savings goals
+            ApiCall(display_name=GOALS_NAME,
+                    api_request=ApiRequest(url=f'{app.config["GOALS_URI"]}/{username}',
+                                           headers=hed,
+                                           timeout=app.config['BACKEND_TIMEOUT']),
                     logger=app.logger)
         ]
 
         api_response = {BALANCE_NAME: None,
                         TRANSACTION_LIST_NAME: None,
-                        CONTACTS_NAME: []}
+                        CONTACTS_NAME: [],
+                        GOALS_NAME: None}
 
         tracer = trace.get_tracer(__name__)
-        with TracedThreadPoolExecutor(tracer, max_workers=3) as executor:
+        with TracedThreadPoolExecutor(tracer, max_workers=4) as executor:
             futures = []
 
             future_to_api_call = {
@@ -181,6 +190,7 @@ def create_app():
                                bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
+                               goals=api_response[GOALS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
                                history=api_response[TRANSACTION_LIST_NAME],
                                message=message,
@@ -360,6 +370,102 @@ def create_app():
             return _transaction_failed(
                 token, 'Deposit',
                 f'{request.form.get("amount", "")} is not a valid number')
+
+    def _goal_action(action, handler):
+        """
+        Runs a savings goals form handler for a signed in user.
+
+        handler(token, username) returns the success message; failures raise
+        UserWarning (or TransactionError) with a message for the user.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            app.logger.error('Error in %s: user is not authenticated.', action)
+            return abort(401)
+        try:
+            message = handler(token, decode_token(token)['user'])
+            return redirect(code=303,
+                            location=url_for('home',
+                                             msg=message,
+                                             _external=True,
+                                             _scheme=app.config['SCHEME']))
+        except requests.exceptions.RequestException as err:
+            app.logger.error('Error in %s: %s', action, str(err))
+            return _transaction_failed(token, 'Savings goal', status=502)
+        except TransactionError as err:
+            app.logger.error('Error in %s: %s', action, str(err))
+            return _transaction_failed(token, 'Savings goal', str(err), err.status_code)
+        except UserWarning as warn:
+            app.logger.error('Error in %s: %s', action, str(warn))
+            return _transaction_failed(token, 'Savings goal', str(warn))
+        except (KeyError, ValueError, DecimalException) as input_err:
+            app.logger.error('Error in %s: %s', action, str(input_err))
+            if isinstance(input_err, KeyError):
+                return _transaction_failed(token, 'Savings goal', 'missing form field')
+            return _transaction_failed(
+                token, 'Savings goal',
+                f'{request.form.get("amount", "")} is not a valid number')
+
+    def _goals_request(method, path, token, body=None):
+        """Calls the savings goals service; raises TransactionError on 4xx/5xx"""
+        hed = {'Authorization': 'Bearer ' + token}
+        kwargs = {}
+        if body is not None:
+            kwargs['data'] = jsonify(body).data
+            hed['content-type'] = 'application/json'
+        resp = requests.request(method, url=app.config["GOALS_URI"] + path,
+                                headers=hed,
+                                timeout=app.config['BACKEND_TIMEOUT'], **kwargs)
+        try:
+            resp.raise_for_status()
+        except requests.exceptions.HTTPError as http_err:
+            status = 400 if resp.status_code < 500 else 502
+            raise TransactionError(resp.text, status) from http_err
+
+    @app.route('/goals', methods=['POST'])
+    def create_goal():
+        """
+        Creates a savings goal with a name (up to 40 characters) and a target amount
+        """
+        def handler(token, username):
+            name = request.form['name'].strip()
+            if not name:
+                raise UserWarning('a goal needs a name')
+            if len(name) > MAX_GOAL_NAME_LENGTH:
+                raise UserWarning(
+                    f'goal name must be {MAX_GOAL_NAME_LENGTH} characters or fewer')
+            target = _amount_to_cents(request.form['target'])
+            if target <= 0:
+                raise UserWarning('target must be more than zero')
+            _goals_request('POST', f'/{username}', token,
+                           {'name': name, 'target': target})
+            return 'Goal created'
+        return _goal_action('create goal', handler)
+
+    @app.route('/goals/<int:goal_id>/delete', methods=['POST'])
+    def delete_goal(goal_id):
+        """
+        Deletes a savings goal
+        """
+        def handler(token, username):
+            _goals_request('DELETE', f'/{username}/{goal_id}', token)
+            return 'Goal deleted'
+        return _goal_action('delete goal', handler)
+
+    @app.route('/goals/<int:goal_id>/contribute', methods=['POST'])
+    def contribute_to_goal(goal_id):
+        """
+        Moves money from the checking account into a savings goal
+        """
+        def handler(token, username):
+            amount = _amount_to_cents(request.form['amount'])
+            if amount <= 0:
+                raise UserWarning('amount must be more than zero')
+            _goals_request('POST', f'/{username}/{goal_id}/contributions', token,
+                           {'amount': amount, 'uuid': request.form['uuid']})
+            sleep(0.25)  # let the transfer reach balancereader and history
+            return 'Money moved to goal'
+        return _goal_action('contribute to goal', handler)
 
     def _amount_to_cents(user_input):
         """Convert a decimal amount string to an integer number of cents.
@@ -724,6 +830,8 @@ def create_app():
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["CONTACTS_URI"] = 'http://{}/contacts'.format(
         os.environ.get('CONTACTS_API_ADDR'))
+    app.config["GOALS_URI"] = 'http://{}/goals'.format(
+        os.environ.get('SAVINGSGOALS_API_ADDR'))
     app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
     app.config['LOCAL_ROUTING'] = os.getenv('LOCAL_ROUTING_NUM')
     # timeout in seconds for calls to the backend

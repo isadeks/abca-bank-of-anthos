@@ -47,6 +47,7 @@ PYTHON_SERVICES = {
     "userservice": ("src/accounts/userservice/Dockerfile", "userservice.yaml"),
     "contacts": ("src/accounts/contacts/Dockerfile", "contacts.yaml"),
     "loadgenerator": ("src/loadgenerator/Dockerfile", "loadgenerator.yaml"),
+    "savingsgoals": ("src/accounts/savingsgoals/Dockerfile", "savingsgoals.yaml"),
 }
 JAVA_SERVICES = {
     "ledgerwriter": ("src/ledger/ledgerwriter/pom.xml", "ledger-writer.yaml"),
