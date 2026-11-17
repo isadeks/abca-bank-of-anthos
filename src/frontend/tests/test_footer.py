@@ -20,7 +20,7 @@ from test_payment_deposit_handlers import HandlerTestCase, backend_response
 
 
 class TestFooter(HandlerTestCase):
-    """The footer keeps the demo disclaimer but not the copyright line"""
+    """The footer has neither the demo disclaimer nor the copyright line"""
 
     def test_footer_has_no_copyright_line(self):
         """a rendered page has the disclaimer and no 2020-2024 line"""
@@ -29,6 +29,6 @@ class TestFooter(HandlerTestCase):
                             contact_account_num='7777777777',
                             contact_label='a' * 31).get_data(as_text=True)
         self.assertIn('<footer', html)
-        self.assertIn('This website is hosted for demo purposes only', html)
+        self.assertNotIn('This website is hosted for demo purposes only', html)
         self.assertNotIn('2020-2024', html)
         self.assertNotIn('footer-google-inc', html)
