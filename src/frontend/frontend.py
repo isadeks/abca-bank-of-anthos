@@ -28,6 +28,7 @@ from time import sleep
 import requests
 from requests.exceptions import HTTPError, RequestException
 import jwt
+from sqlalchemy.exc import SQLAlchemyError
 from flask import Flask, abort, jsonify, make_response, redirect, \
     render_template, request, url_for
 
@@ -44,6 +45,7 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 # Local imports
 from api_call import ApiCall, ApiRequest
 import fx
+import orders
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
 
@@ -233,6 +235,18 @@ def create_app():
             elif trans['fromAccountNum'] == account_id:
                 trans['accountLabel'] = contact_map.get(trans['toAccountNum'])
 
+    def _parse_fx_amount(amount_arg):
+        """The amount of foreign currency as a Decimal, or None if it is not valid"""
+        try:
+            amount = Decimal(amount_arg)
+            if not amount.is_finite() or amount <= 0 \
+                    or amount > Decimal('1000000') \
+                    or amount != amount.quantize(Decimal('0.01')):
+                return None
+            return amount
+        except DecimalException:
+            return None
+
     @app.route('/foreign-currency', methods=['GET'])
     def foreign_currency():
         """
@@ -251,15 +265,7 @@ def create_app():
         error = None
         status = 200
         if currency or amount_arg:
-            amount = None
-            try:
-                amount = Decimal(amount_arg)
-                if not amount.is_finite() or amount <= 0 \
-                        or amount > Decimal('1000000') \
-                        or amount != amount.quantize(Decimal('0.01')):
-                    amount = None
-            except DecimalException:
-                pass
+            amount = _parse_fx_amount(amount_arg)
             if currency not in fx.SUPPORTED_CURRENCIES:
                 error = 'Please choose a currency.'
                 status = 400
@@ -293,7 +299,188 @@ def create_app():
                                margin_percent=app.config['FX_MARGIN_PERCENT'],
                                delivery_charge=app.config['FX_DELIVERY_CHARGE'],
                                quote=quote,
+                               address=request.args.get('address', ''),
                                error=error), status
+
+    def _redirect_to_login():
+        return redirect(url_for('login_page',
+                                _external=True,
+                                _scheme=app.config['SCHEME']))
+
+    def _render_order_form(token, currency, amount_arg, address, error,
+                           status, quote=None):
+        """Renders the quote page again after a failed order"""
+        return render_template('foreign_currency.html',
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               name=decode_token(token)['name'],
+                               currencies=fx.SUPPORTED_CURRENCIES,
+                               selected=currency,
+                               amount=amount_arg,
+                               margin_percent=app.config['FX_MARGIN_PERCENT'],
+                               delivery_charge=app.config['FX_DELIVERY_CHARGE'],
+                               quote=quote,
+                               address=address,
+                               error=error), status
+
+    def _get_balance_cents(token, account_id):
+        """The account balance in cents; raises RequestException if unavailable"""
+        resp = requests.get(
+            url=f'{app.config["BALANCES_URI"]}/{account_id}',
+            headers={'Authorization': 'Bearer ' + token},
+            timeout=app.config['BACKEND_TIMEOUT'])
+        resp.raise_for_status()
+        return int(resp.json())
+
+    @app.route('/foreign-currency/order', methods=['POST'])
+    def place_currency_order():
+        """
+        Orders foreign cash for delivery. The rate is locked now, and the
+        total (amount plus fees) is paid through the ledger.
+
+        Fails if the token is not valid, the input is invalid, the balance
+        is insufficient, or the payment is rejected.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return _redirect_to_login()
+        token_data = decode_token(token)
+        currency = request.form.get('currency', '')
+        amount_arg = request.form.get('amount', '').strip()
+        address = ' '.join(request.form.get('address', '').split())
+
+        def fail(error, status, quote=None):
+            return _render_order_form(token, currency, amount_arg, address,
+                                      error, status, quote)
+
+        amount = _parse_fx_amount(amount_arg)
+        if currency not in fx.SUPPORTED_CURRENCIES:
+            return fail('Please choose a currency.', 400)
+        if amount is None:
+            return fail('Please enter an amount greater than 0 '
+                        '(up to 1,000,000, at most 2 decimals).', 400)
+        if len(address) < 10 or len(address) > 300:
+            return fail('Please enter a delivery address '
+                        '(10 to 300 characters).', 400)
+        orders_db = app.config['ORDERS_DB']
+        if orders_db is None:
+            return fail('Orders are unavailable right now. '
+                        'Please try again later.', 503)
+        try:
+            rate = fx.fetch_rate(app.config['FX_RATES_URL'], currency,
+                                 cache=app.config['FX_CACHE'],
+                                 timeout=app.config['BACKEND_TIMEOUT'])
+        except fx.RateUnavailable as err:
+            app.logger.error('Exchange rate unavailable: %s', err)
+            return fail('Exchange rates are unavailable right now, so we '
+                        'can\'t place your order. Please try again later.', 503)
+        quote = fx.calculate_quote(amount, rate,
+                                   app.config['FX_MARGIN_PERCENT'],
+                                   app.config['FX_DELIVERY_CHARGE'])
+        quote['currency'] = currency
+        quote['amount'] = amount
+        total_cents = int(quote['total'] * 100)
+        try:
+            balance = _get_balance_cents(token, token_data['acct'])
+        except (requests.exceptions.RequestException, ValueError, TypeError) as err:
+            app.logger.error('Error reading balance for order: %s', str(err))
+            return fail('We couldn\'t check your balance. '
+                        'Please try again later.', 502)
+        if balance < total_cents:
+            return fail('Insufficient balance: the order total is '
+                        f'${quote["total"]:,.2f}.', 400, quote)
+        order_id = orders.new_order_id()
+        try:
+            orders_db.create(order_id, token_data, quote, address)
+        except SQLAlchemyError as err:
+            app.logger.error('Error storing currency order: %s', str(err))
+            return fail('Orders are unavailable right now. '
+                        'Please try again later.', 503)
+        try:
+            _submit_transaction({"fromAccountNum": token_data['acct'],
+                                 "fromRoutingNum": app.config['LOCAL_ROUTING'],
+                                 "toAccountNum": app.config['FX_DESK_ACCOUNT'],
+                                 "toRoutingNum": app.config['LOCAL_ROUTING'],
+                                 "amount": total_cents,
+                                 "uuid": order_id})
+        except (requests.exceptions.RequestException, TransactionError) as err:
+            app.logger.error('Error paying for currency order: %s', str(err))
+            _discard_order(orders_db, order_id)
+            if isinstance(err, TransactionError) and err.status_code < 500:
+                return fail(f'Payment failed: {err}', 400, quote)
+            return fail('Payment failed. Your account was not charged '
+                        'for this order. Please try again later.', 502, quote)
+        try:
+            orders_db.confirm(order_id)
+        except SQLAlchemyError as err:
+            app.logger.error('Error confirming currency order %s: %s',
+                             order_id, str(err))
+            return fail('Your payment went through but we could not confirm '
+                        f'the order. Please quote order {order_id} to support.',
+                        503)
+        return redirect(code=303,
+                        location=url_for('currency_order',
+                                         order_id=order_id,
+                                         _external=True,
+                                         _scheme=app.config['SCHEME']))
+
+    def _discard_order(orders_db, order_id):
+        try:
+            orders_db.discard(order_id)
+        except SQLAlchemyError as err:
+            app.logger.error('Error discarding currency order %s: %s',
+                             order_id, str(err))
+
+    def _render_orders_page(template, **context):
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        return render_template(template,
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               name=decode_token(token)['name'],
+                               **context)
+
+    @app.route('/currency-orders', methods=['GET'])
+    def currency_orders():
+        """Lists the signed in user's currency orders"""
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return _redirect_to_login()
+        orders_db = app.config['ORDERS_DB']
+        user_orders = []
+        error = None
+        status = 200
+        try:
+            if orders_db is None:
+                raise SQLAlchemyError('no orders database configured')
+            user_orders = orders_db.list_for(decode_token(token)['user'])
+        except SQLAlchemyError as err:
+            app.logger.error('Error listing currency orders: %s', str(err))
+            error = 'Your orders are unavailable right now. Please try again later.'
+            status = 503
+        return _render_orders_page('currency_orders.html',
+                                   orders=user_orders, error=error), status
+
+    @app.route('/currency-orders/<order_id>', methods=['GET'])
+    def currency_order(order_id):
+        """Shows one currency order and its status timeline (owner only)"""
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return _redirect_to_login()
+        orders_db = app.config['ORDERS_DB']
+        try:
+            if orders_db is None:
+                raise SQLAlchemyError('no orders database configured')
+            order = orders_db.get_for(decode_token(token)['user'], order_id)
+        except SQLAlchemyError as err:
+            app.logger.error('Error reading currency order: %s', str(err))
+            return _render_orders_page(
+                'currency_orders.html', orders=[],
+                error='Your orders are unavailable right now. '
+                      'Please try again later.'), 503
+        if order is None:
+            # not found, or somebody else's order: indistinguishable
+            abort(404)
+        return _render_orders_page('currency_order.html', order=order)
 
     @app.route('/payment', methods=['POST'])
     def payment():
@@ -799,6 +986,12 @@ def create_app():
                                            'https://api.frankfurter.dev/v1')
     app.config['FX_MARGIN_PERCENT'] = Decimal(os.getenv('FX_MARGIN_PERCENT', '2.5'))
     app.config['FX_DELIVERY_CHARGE'] = Decimal(os.getenv('FX_DELIVERY_CHARGE', '5.00'))
+    app.config['FX_DESK_ACCOUNT'] = os.getenv('FX_DESK_ACCOUNT', '9999900001')
+    orders_uri = os.getenv('ACCOUNTS_DB_URI')
+    app.config['ORDERS_DB'] = orders.OrdersDb(
+        orders_uri,
+        tuple(int(s) for s in os.getenv('FX_ORDER_STEP_SECONDS', '0,60,180,300').split(','))
+    ) if orders_uri else None
     app.config['FX_CACHE'] = fx.RateCache(int(os.getenv('FX_CACHE_SECONDS', '60')))
 
     # where am I?

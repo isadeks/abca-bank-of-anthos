@@ -68,6 +68,18 @@ patches:
         value:
           name: ACCOUNTS_DB_URI
           value: postgresql://accounts-admin:$(ACCOUNTS_DB_PASSWORD)@accounts-db:5432/accounts-db
+  - target: {kind: Deployment, name: frontend}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_PASSWORD
+          valueFrom: {secretKeyRef: {name: db-credentials, key: ACCOUNTS_DB_PASSWORD}}
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ACCOUNTS_DB_URI
+          value: postgresql://accounts-admin:$(ACCOUNTS_DB_PASSWORD)@accounts-db:5432/accounts-db
   - target: {kind: Deployment, name: contacts}
     patch: |-
       - op: add

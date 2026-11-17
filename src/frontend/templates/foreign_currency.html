@@ -25,7 +25,7 @@ limitations under the License.
         <div class="col-md-8">
           <h2 class="header-title" id="fx-title">Order foreign currency</h2>
         </div>
-        <div class="col-md-4 text-right"><a href="{{ url_for('home') }}" id="fx-back">Back to account</a></div>
+        <div class="col-md-4 text-right"><a href="{{ url_for('currency_orders') }}" id="fx-my-orders" class="mr-3">My currency orders</a><a href="{{ url_for('home') }}" id="fx-back">Back to account</a></div>
       </div>
       <div class="row col-lg-12 align-items-start">
         <div class="col-lg-6">
@@ -68,6 +68,16 @@ limitations under the License.
                 <tr><td>Delivery charge</td><td class="text-right" id="fx-delivery">${{ '{:,.2f}'.format(quote.delivery) }}</td></tr>
                 <tr><th>Total</th><th class="text-right" id="fx-total">${{ '{:,.2f}'.format(quote.total) }}</th></tr>
               </table>
+              <form id="fx-order-form" class="mt-3" method="POST" action="{{ url_for('place_currency_order') }}">
+                <input type="hidden" name="currency" value="{{ quote.currency }}">
+                <input type="hidden" name="amount" value="{{ quote.amount }}">
+                <div class="form-group">
+                  <label for="fx-address">Delivery address</label>
+                  <textarea class="form-control" id="fx-address" name="address" rows="2" minlength="10" maxlength="300" required>{{ address }}</textarea>
+                </div>
+                <p class="small text-muted">The exchange rate is locked when you place the order, and the total is debited from your account.</p>
+                <button class="btn btn-primary" id="fx-order-submit" type="submit">Place order for ${{ '{:,.2f}'.format(quote.total) }}</button>
+              </form>
             </div>
           </div>
           {% endif %}

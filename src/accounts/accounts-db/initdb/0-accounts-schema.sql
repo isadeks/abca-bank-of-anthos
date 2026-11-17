@@ -44,3 +44,26 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE INDEX IF NOT EXISTS idx_contacts_username ON contacts (username);
 
+
+
+
+-- Foreign currency orders placed through the frontend. The frontend also
+-- creates this table when it is missing, for databases created before it.
+CREATE TABLE IF NOT EXISTS currency_orders (
+  order_id VARCHAR(36) PRIMARY KEY,
+  username VARCHAR(64) NOT NULL,
+  account_id VARCHAR(10) NOT NULL,
+  currency VARCHAR(3) NOT NULL,
+  amount NUMERIC(14, 2) NOT NULL,
+  market_rate NUMERIC(18, 8) NOT NULL,
+  customer_rate NUMERIC(18, 8) NOT NULL,
+  subtotal NUMERIC(14, 2) NOT NULL,
+  fee NUMERIC(14, 2) NOT NULL,
+  delivery NUMERIC(14, 2) NOT NULL,
+  total NUMERIC(14, 2) NOT NULL,
+  address VARCHAR(300) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  placed_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_currency_orders_username ON currency_orders (username);

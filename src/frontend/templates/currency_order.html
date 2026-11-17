@@ -1,0 +1,67 @@
+<!--
+Copyright 2020 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+  <head>
+{% include 'shared/html_head.html' %}
+  </head>
+  <body>
+{% include 'shared/navigation.html' %}
+    <main class="container">
+      <div class="row col-lg-12 align-items-start top-row">
+        <div class="col-md-8">
+          <h2 class="header-title" id="order-title">Order of {{ '{:,.2f}'.format(order.amount) }} {{ order.currency }}</h2>
+        </div>
+        <div class="col-md-4 text-right"><a href="{{ url_for('currency_orders') }}" id="order-back">My currency orders</a></div>
+      </div>
+      <div class="row col-lg-12 align-items-start">
+        <div class="col-lg-6">
+          <div class="card mb-4">
+            <div class="card-body">
+              <h5>Status: <span id="order-status">{{ order.status }}</span></h5>
+              <ol class="list-unstyled mb-0" id="order-timeline">
+                {% for step in order.timeline %}
+                <li class="timeline-step{% if step.reached %} reached{% endif %}{% if step.current %} current{% endif %}" data-status="{{ step.status }}">
+                  <span class="material-icons align-middle">{% if step.reached %}check_circle{% else %}radio_button_unchecked{% endif %}</span>
+                  <span{% if step.current %} class="font-weight-bold"{% endif %}>{{ step.status }}</span>
+                  <span class="small text-muted">{% if step.reached %}{{ step.at.strftime('%Y-%m-%d %H:%M:%S') }} UTC{% endif %}</span>
+                </li>
+                {% endfor %}
+              </ol>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card mb-4" id="order-summary">
+            <div class="card-body">
+              <table class="table mb-0">
+                <tr><td>Order</td><td class="text-right small" id="order-id">{{ order.order_id }}</td></tr>
+                <tr><td>Locked rate</td><td class="text-right" id="order-rate">1 USD = {{ '{:.4f}'.format(order.customer_rate) }} {{ order.currency }}</td></tr>
+                <tr><td>Currency cost</td><td class="text-right">${{ '{:,.2f}'.format(order.subtotal) }}</td></tr>
+                <tr><td>Fee</td><td class="text-right">${{ '{:,.2f}'.format(order.fee) }}</td></tr>
+                <tr><td>Delivery charge</td><td class="text-right">${{ '{:,.2f}'.format(order.delivery) }}</td></tr>
+                <tr><th>Total debited</th><th class="text-right" id="order-total">${{ '{:,.2f}'.format(order.total) }}</th></tr>
+                <tr><td>Deliver to</td><td class="text-right" id="order-address">{{ order.address }}</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+{% include 'shared/footer.html' %}
+{% include 'shared/scripts.html' %}
+  </body>
+</html>

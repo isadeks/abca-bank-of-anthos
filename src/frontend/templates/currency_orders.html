@@ -1,0 +1,63 @@
+<!--
+Copyright 2020 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+  <head>
+{% include 'shared/html_head.html' %}
+  </head>
+  <body>
+{% include 'shared/navigation.html' %}
+    <main class="container">
+      <div class="row col-lg-12 align-items-start top-row">
+        <div class="col-md-8">
+          <h2 class="header-title" id="orders-title">My currency orders</h2>
+        </div>
+        <div class="col-md-4 text-right">
+          <a href="{{ url_for('foreign_currency') }}" id="orders-new">Order foreign currency</a>
+          <a href="{{ url_for('home') }}" class="ml-3" id="orders-back">Back to account</a>
+        </div>
+      </div>
+      <div class="row col-lg-12">
+        <div class="col-lg-12">
+          {% if error %}
+          <div class="card border-danger mb-4" id="orders-error" role="alert">
+            <div class="card-body text-danger">{{ error }}</div>
+          </div>
+          {% elif not orders %}
+          <p id="orders-empty">You have no currency orders yet.</p>
+          {% else %}
+          <table class="table" id="orders-table">
+            <thead><tr><th>Placed</th><th>Currency</th><th class="text-right">Total</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {% for order in orders %}
+              <tr class="order-row">
+                <td>{{ order.placed_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ '{:,.2f}'.format(order.amount) }} {{ order.currency }}</td>
+                <td class="text-right">${{ '{:,.2f}'.format(order.total) }}</td>
+                <td class="order-status">{{ order.status }}</td>
+                <td><a class="order-link" href="{{ url_for('currency_order', order_id=order.order_id) }}">Track</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+      </div>
+    </main>
+{% include 'shared/footer.html' %}
+{% include 'shared/scripts.html' %}
+  </body>
+</html>
