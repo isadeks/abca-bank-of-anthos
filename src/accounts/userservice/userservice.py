@@ -150,6 +150,8 @@ def create_app():
         )
         if any(f not in req for f in fields):
             raise UserWarning('missing required field(s)')
+        if not req['username']:
+            raise UserWarning('Please choose a username.')
         if any(not bool(req[f] or req[f].strip()) for f in fields):
             raise UserWarning('missing value for input field(s)')
 
