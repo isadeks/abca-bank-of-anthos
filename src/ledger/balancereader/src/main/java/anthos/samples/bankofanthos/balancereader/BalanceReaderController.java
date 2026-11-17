@@ -97,7 +97,7 @@ public final class BalanceReaderController {
         MeterRegistry meterRegistry,
         LoadingCache<String, Long> cache,
         @Value("${LOCAL_ROUTING_NUM}") final String localRoutingNum,
-        @Value("${VERSION}") final String version,
+        @Value("${VERSION:unknown}") final String version,
         ObjectProvider<Tracer> tracerProvider) {
         // The tracer is optional: contexts without tracing still work.
         this.tracer = tracerProvider == null
@@ -110,7 +110,8 @@ public final class BalanceReaderController {
         this.cache = cache;
         GuavaCacheMetrics.monitor(meterRegistry, this.cache, "Guava");
         LOGGER.debug("Initialized cache");
-        this.version = version;
+        this.version = version == null || version.isBlank()
+            ? "unknown" : version;
         // Initialize transaction processor.
         this.ledgerReader = reader;
         LOGGER.debug("Initialized transaction processor");
