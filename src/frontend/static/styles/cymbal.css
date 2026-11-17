@@ -15,7 +15,7 @@
  */
 
  html, body {
-    font-family: 'Roboto', sans-serif !important;
+    font-family: 'Inter', 'Roboto', sans-serif !important;
     font-size: 1.1rem;
     margin: 0;
     padding: 0;
@@ -467,3 +467,62 @@ input {
       align-items: center;
       margin-right: 15px;
     }
+
+/* ===== Larkspur Bank theme: navy + teal, Inter ===== */
+:root {
+  --lb-navy: #0b2545;
+  --lb-navy-2: #13315c;
+  --lb-teal: #0f9d8a;
+  --lb-teal-dark: #0b7a6b;
+  --lb-bg: #f3f6fa;
+  --lb-border: #e2e8f0;
+  --lb-text: #1e293b;
+  --lb-muted: #64748b;
+}
+html, body { background-color: var(--lb-bg) !important; color: var(--lb-text); }
+.material-icons, .button-icon, .money-icon, .modal-icon, .arrow-back, .sign-in i { color: var(--lb-teal); }
+.card-icon { color: var(--lb-teal); }
+.navbar-top {
+  background: linear-gradient(90deg, var(--lb-navy), var(--lb-navy-2));
+  box-shadow: 0 2px 12px rgba(11, 37, 69, 0.25);
+}
+.navbar-brand { color: #ffffff !important; letter-spacing: 0.02em !important; font-weight: 700; }
+.navbar-brand::before {
+  content: "L"; display: inline-block; width: 36px; height: 36px; line-height: 36px;
+  margin-right: 12px; text-align: center; border-radius: 10px; font-size: 1.2rem;
+  background: var(--lb-teal); color: #fff;
+}
+.nav-link, #account-user-name, .navbar-top .material-icons { color: #ffffff !important; }
+.nav-link:hover { color: #b8e6df !important; }
+.dropdown-menu { border-radius: 12px; box-shadow: 0 8px 24px rgba(11, 37, 69, 0.18); }
+.card {
+  background-color: #ffffff; border: 1px solid var(--lb-border); border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(11, 37, 69, 0.06) !important;
+}
+.header-title, .card-header-title, .pop-up-label { color: var(--lb-navy); font-weight: 600; }
+#current-balance { color: var(--lb-navy); font-weight: 700; }
+.table thead th { color: var(--lb-muted); font-size: 0.8rem; }
+.table tbody tr:hover { background: #f8fafc; }
+.text-credit, .transaction-amount-debit, .invalid-feedback { color: #dc2626; }
+.text-debit, .transaction-amount-credit { color: #059669; }
+.btn, .btn-primary, .card-button, .btn-block, form button, .btn-primary.custom-file-control:before, .btn.btn-primary {
+  background: var(--lb-teal) !important; border-radius: 12px; box-shadow: 0 2px 6px rgba(15, 157, 138, 0.3);
+}
+.btn:hover, .card-button:hover, .btn-primary:hover, .btn:focus, .btn-primary:focus, .btn-primary.custom-file-control:hover {
+  background-color: var(--lb-teal-dark) !important;
+}
+.btn:active, .card-button:active, .btn-primary:active, .btn-secondary:active { background-color: var(--lb-navy) !important; border-color: var(--lb-navy) !important; }
+.btn-secondary, .btn.btn-secondary, .btn-secondary.custom-file-control:before {
+  background-color: #ffffff !important; color: var(--lb-teal-dark) !important; border: 1px solid var(--lb-teal) !important; box-shadow: none;
+}
+.custom-file-control, .form-control, .is-focused .custom-file-control, .is-focused .form-control,
+.custom-file-control:invalid, .form-control:invalid {
+  background-image: linear-gradient(0deg, var(--lb-teal) 2px, rgba(15,157,138,0) 0), linear-gradient(0deg, rgba(0,0,0,.26) 1px, transparent 0);
+}
+.form-control:focus { border-color: var(--lb-teal) !important; }
+.custom-select:focus { box-shadow: 0 1px 3px var(--lb-teal); }
+.modal-content { border-radius: 16px; }
+.snackbar-card { background-color: var(--lb-navy) !important; border-radius: 12px; }
+.snackbar-close { color: #7fe3d3 !important; }
+.alert-danger { background-color: #dc2626 !important; border-radius: 12px; }
+.footer { background-color: transparent; border-top: 1px solid var(--lb-border); color: var(--lb-muted); }
