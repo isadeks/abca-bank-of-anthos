@@ -6,6 +6,13 @@
                 <b>Cluster: </b>{{ cluster_name }}, <b>Pod: </b>{{ pod_name }}<b>, Zone: </b>{{ pod_zone }}
               </small>
             </div>
+            {% if balance_version %}
+            <div class="row mb-3">
+              <small id="balance-version">
+                <b>Balance service: </b>{{ balance_version }}
+              </small>
+            </div>
+            {% endif %}
             <div class="row mb-3">
               <small>
                 This website is hosted for demo purposes only. It is not an

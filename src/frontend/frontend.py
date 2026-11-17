@@ -78,6 +78,20 @@ def create_app():
         """
         return os.environ.get('VERSION'), 200
 
+    @app.context_processor
+    def inject_balance_version():
+        """
+        Makes the balance service version available to the footer.
+        Empty when the balance service cannot be reached.
+        """
+        try:
+            resp = requests.get(app.config['BALANCES_VERSION_URI'],
+                                timeout=1)
+            resp.raise_for_status()
+            return {'balance_version': resp.text.strip()}
+        except (RequestException, AttributeError):
+            return {'balance_version': ''}
+
     @app.route('/ready', methods=['GET'])
     def readiness():
         """
@@ -717,6 +731,8 @@ def create_app():
     app.config["USERSERVICE_URI"] = 'http://{}/users'.format(
         os.environ.get('USERSERVICE_API_ADDR'))
     app.config["BALANCES_URI"] = 'http://{}/balances'.format(
+        os.environ.get('BALANCES_API_ADDR'))
+    app.config["BALANCES_VERSION_URI"] = 'http://{}/version'.format(
         os.environ.get('BALANCES_API_ADDR'))
     app.config["HISTORY_URI"] = 'http://{}/transactions'.format(
         os.environ.get('HISTORY_API_ADDR'))
