@@ -43,6 +43,7 @@ from opentelemetry.instrumentation.jinja2 import Jinja2Instrumentor
 
 # Local imports
 from api_call import ApiCall, ApiRequest
+import fx
 from traced_thread_pool_executor import TracedThreadPoolExecutor
 from trace_logging import add_trace_context
 
@@ -231,6 +232,68 @@ def create_app():
                 trans['accountLabel'] = contact_map.get(trans['fromAccountNum'])
             elif trans['fromAccountNum'] == account_id:
                 trans['accountLabel'] = contact_map.get(trans['toAccountNum'])
+
+    @app.route('/foreign-currency', methods=['GET'])
+    def foreign_currency():
+        """
+        Quote page for ordering foreign currency: shows the rate, fee,
+        delivery charge and total in dollars. Redirects to /login if the
+        token is not valid.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        currency = request.args.get('currency', '')
+        amount_arg = request.args.get('amount', '').strip()
+        quote = None
+        error = None
+        status = 200
+        if currency or amount_arg:
+            amount = None
+            try:
+                amount = Decimal(amount_arg)
+                if not amount.is_finite() or amount <= 0 \
+                        or amount > Decimal('1000000') \
+                        or amount != amount.quantize(Decimal('0.01')):
+                    amount = None
+            except DecimalException:
+                pass
+            if currency not in fx.SUPPORTED_CURRENCIES:
+                error = 'Please choose a currency.'
+                status = 400
+            elif amount is None:
+                error = 'Please enter an amount greater than 0 ' \
+                        '(up to 1,000,000, at most 2 decimals).'
+                status = 400
+            else:
+                try:
+                    rate = fx.fetch_rate(app.config['FX_RATES_URL'], currency,
+                                         cache=app.config['FX_CACHE'],
+                                         timeout=app.config['BACKEND_TIMEOUT'])
+                    quote = fx.calculate_quote(
+                        amount, rate, app.config['FX_MARGIN_PERCENT'],
+                        app.config['FX_DELIVERY_CHARGE'])
+                    quote['currency'] = currency
+                    quote['amount'] = amount
+                except fx.RateUnavailable as err:
+                    app.logger.error('Exchange rate unavailable: %s', err)
+                    error = ('Exchange rates are unavailable right now, so '
+                             'we can\'t give you a quote. Please try again '
+                             'later.')
+                    status = 503
+        return render_template('foreign_currency.html',
+                               bank_name=os.getenv('BANK_NAME', 'Bank of Anthos'),
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               name=decode_token(token)['name'],
+                               currencies=fx.SUPPORTED_CURRENCIES,
+                               selected=currency,
+                               amount=amount_arg,
+                               margin_percent=app.config['FX_MARGIN_PERCENT'],
+                               delivery_charge=app.config['FX_DELIVERY_CHARGE'],
+                               quote=quote,
+                               error=error), status
 
     @app.route('/payment', methods=['POST'])
     def payment():
@@ -732,6 +795,11 @@ def create_app():
     app.config['CONSENT_COOKIE'] = 'consented'
     app.config['TIMESTAMP_FORMAT'] = '%Y-%m-%dT%H:%M:%S.%f%z'
     app.config['SCHEME'] = os.environ.get('SCHEME', 'http')
+    app.config['FX_RATES_URL'] = os.getenv('FX_RATES_URL',
+                                           'https://api.frankfurter.dev/v1')
+    app.config['FX_MARGIN_PERCENT'] = Decimal(os.getenv('FX_MARGIN_PERCENT', '2.5'))
+    app.config['FX_DELIVERY_CHARGE'] = Decimal(os.getenv('FX_DELIVERY_CHARGE', '5.00'))
+    app.config['FX_CACHE'] = fx.RateCache(int(os.getenv('FX_CACHE_SECONDS', '60')))
 
     # where am I?
     metadata_server = os.getenv('METADATA_SERVER', 'metadata.google.internal')

@@ -82,6 +82,12 @@ spec:
               value: k8s.namespace.name=$(K8S_NAMESPACE_NAME)
             - name: SCHEME
               value: http
+            - name: FX_RATES_URL
+              value: https://api.frankfurter.dev/v1
+            - name: FX_MARGIN_PERCENT
+              value: "2.5"
+            - name: FX_DELIVERY_CHARGE
+              value: "5.00"
             - name: LOG_LEVEL
               value: info
             - name: DEFAULT_USERNAME
