@@ -63,6 +63,9 @@ class OrdersDb:
 
     def __init__(self, uri, step_seconds=DEFAULT_STEP_SECONDS,
                  clock=lambda: datetime.now(timezone.utc)):
+        if uri.startswith('postgresql://'):
+            # SQLAlchemy 2 would pick psycopg 3 for a bare postgresql:// URI
+            uri = 'postgresql+psycopg2://' + uri[len('postgresql://'):]
         self.engine = create_engine(uri)
         self.step_seconds = step_seconds
         self.clock = clock
