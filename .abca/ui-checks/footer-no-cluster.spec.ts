@@ -9,4 +9,5 @@ test('footer no longer shows cluster, pod and zone', async ({ page }) => {
   await shot(page, 'The footer without cluster, pod and zone details', { focus: footer });
   await expect(footer).not.toContainText('Cluster:');
   await expect(footer).not.toContainText('Zone:');
+  await expect(footer).not.toContainText('demo purposes only');
 });

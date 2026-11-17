@@ -31,3 +31,4 @@ class TestFooterNoClusterInfo(HandlerTestCase):
         self.assertIn('<footer', html)
         self.assertNotIn('Cluster: ', html)
         self.assertNotIn('Zone: ', html)
+        self.assertNotIn('not an official Google project', html)
