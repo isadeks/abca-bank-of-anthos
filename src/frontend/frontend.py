@@ -62,6 +62,33 @@ class TransactionError(UserWarning):
 
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
+def filter_transactions(history, account_id, kind='all', query=''):
+    """
+    Filters a transaction list for display.
+
+    Params: kind - 'all', 'credit' (money in) or 'debit' (money out)
+            query - case-insensitive text matched against the other
+                    account number and the contact label
+    """
+    if not history:
+        return history
+    query = (query or '').strip().lower()
+    result = []
+    for t in history:
+        is_credit = t.get('toAccountNum') == account_id
+        if kind == 'credit' and not is_credit:
+            continue
+        if kind == 'debit' and is_credit:
+            continue
+        if query:
+            other = t.get('fromAccountNum') if is_credit else t.get('toAccountNum')
+            haystack = f"{other or ''} {t.get('accountLabel') or ''}".lower()
+            if query not in haystack:
+                continue
+        result.append(t)
+    return result
+
+
 def create_app():
     """Flask application factory to create instances
     of the Frontend Flask App
@@ -115,9 +142,12 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return _render_home(token, message=request.args.get('msg', None))
+        return _render_home(token, message=request.args.get('msg', None),
+                            filter_type=request.args.get('type', 'all'),
+                            filter_query=request.args.get('q', ''))
 
-    def _render_home(token, message=None, is_error=False, status=200):
+    def _render_home(token, message=None, is_error=False, status=200,
+                     filter_type='all', filter_query=''):
         """
         Renders the home page for a user with a valid token.
 
@@ -175,14 +205,23 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        if filter_type not in ('all', 'credit', 'debit'):
+            filter_type = 'all'
+        total_transactions = api_response[TRANSACTION_LIST_NAME]
+        history = filter_transactions(total_transactions, account_id,
+                                      filter_type, filter_query)
+
         return render_template('index.html',
                                account_id=account_id,
+                               filter_type=filter_type,
+                               filter_query=filter_query,
+                               total_transactions=total_transactions,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               history=api_response[TRANSACTION_LIST_NAME],
+                               history=history,
                                message=message,
                                message_is_error=is_error,
                                name=display_name,

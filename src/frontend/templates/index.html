@@ -129,11 +129,24 @@ limitations under the License.
                 </div>
               </div>
             </div>
+            <form id="transaction-filter" class="form-inline p-3" method="GET" action="/home">
+              <select class="custom-select mr-2" name="type" id="filter-type" aria-label="Transaction type">
+                <option value="all" {% if filter_type == 'all' %}selected{% endif %}>All</option>
+                <option value="credit" {% if filter_type == 'credit' %}selected{% endif %}>Credit</option>
+                <option value="debit" {% if filter_type == 'debit' %}selected{% endif %}>Debit</option>
+              </select>
+              <input class="form-control mr-2" type="text" name="q" id="filter-query"
+                     placeholder="Account or label" value="{{ filter_query }}" aria-label="Search transactions">
+              <button type="submit" class="btn btn-primary mr-2" id="filter-apply">Filter</button>
+              {% if filter_type != 'all' or filter_query %}
+              <a href="/home" id="filter-clear">Clear</a>
+              {% endif %}
+            </form>
             <div class="table-responsive mb-0" id="transaction-table">
             {% if history is none %}
               <h4 class="card-table-header">Error: Could Not Load Transactions</h4>
             {% elif history|length == 0 %}
-              <h4 class="card-table-header">No Transactions Found</h4>
+              <h4 class="card-table-header">{% if total_transactions %}No Matching Transactions{% else %}No Transactions Found{% endif %}</h4>
             {% else %}
               <table class="table table-sm table-nowrap card-table">
                 <thead class="text-uppercase">
