@@ -544,7 +544,7 @@ h1, h2, h3, h4, .header-title, .card-header-title, .pop-up-label, .navbar-brand 
 .utility-bar .container { display: flex; justify-content: space-between; }
 .utility-bar span + span { margin-left: 1.5rem; }
 .navbar-top {
-  background: var(--cb-green); background-image: none;
+  background: linear-gradient(90deg, var(--cb-green), var(--cb-green-dark));
   border-bottom: 4px solid var(--cb-gold); box-shadow: none;
 }
 .navbar-brand { font-size: 1.5rem; }
