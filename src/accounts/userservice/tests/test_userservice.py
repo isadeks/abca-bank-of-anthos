@@ -173,7 +173,7 @@ class TestUserservice(unittest.TestCase):
         # assert 400 response code
         self.assertEqual(response.status_code, 400)
         # assert we get correct error message
-        self.assertEqual(response.data, b'missing value for input field(s)')
+        self.assertEqual(response.data, b'Please choose a username.')
 
     def test_create_user_mismatch_password_400_status_code_error_message(self):
         """test creating a new user with mismatched password values"""
