@@ -17,7 +17,7 @@ db manages interactions with the underlying database
 """
 
 import logging
-from sqlalchemy import create_engine, MetaData, Table, Column, String, Boolean
+from sqlalchemy import create_engine, MetaData, Table, Column, String, Boolean, false, update
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 
@@ -38,6 +38,8 @@ class ContactsDb:
             Column("account_num", String, nullable=False),
             Column("routing_num", String, nullable=False),
             Column("is_external", Boolean, nullable=False),
+            Column("is_favorite", Boolean, nullable=False,
+                   default=False, server_default=false()),
         )
 
         # Set up tracing autoinstrumentation for sqlalchemy
@@ -78,7 +80,29 @@ class ContactsDb:
                     "account_num": row.account_num,
                     "routing_num": row.routing_num,
                     "is_external": row.is_external,
+                    "is_favorite": row.is_favorite,
                 }
                 contacts.append(contact)
         self.logger.debug("RESULT: Fetched %d contacts.", len(contacts))
         return contacts
+
+    def set_favorite(self, username, label, is_favorite):
+        """Switch the favourite setting of a contact on or off.
+
+        Params: username - the owner of the contact
+                label - the label of the contact
+                is_favorite - the new setting
+        Return: True if the contact exists, False otherwise
+        Raises: SQLAlchemyError if there was an issue with the database
+        """
+        table = self.contacts_table
+        statement = (
+            update(table)
+            .where(table.c.username == username)
+            .where(table.c.label == label)
+            .values(is_favorite=is_favorite)
+        )
+        self.logger.debug("QUERY: %s", str(statement))
+        with self.engine.begin() as conn:
+            result = conn.execute(statement)
+        return result.rowcount > 0
