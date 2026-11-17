@@ -526,3 +526,56 @@ html, body { background-color: var(--lb-bg) !important; color: var(--lb-text); }
 .snackbar-close { color: #7fe3d3 !important; }
 .alert-danger { background-color: #dc2626 !important; border-radius: 12px; }
 .footer { background-color: transparent; border-top: 1px solid var(--lb-border); color: var(--lb-muted); }
+
+/* ===== Community-bank look: forest green + gold, serif headings (DEM-346) ===== */
+:root {
+  --cb-green: #14532d;
+  --cb-green-dark: #0d3b20;
+  --cb-gold: #b8892b;
+  --cb-cream: #faf7f0;
+  --cb-line: #d9d2c0;
+}
+html, body { background-color: var(--cb-cream) !important; }
+h1, h2, h3, h4, .header-title, .card-header-title, .pop-up-label, .navbar-brand {
+  font-family: 'Merriweather', Georgia, 'Times New Roman', serif !important;
+}
+.header-title, .card-header-title, .pop-up-label, #current-balance { color: var(--cb-green); }
+.utility-bar { background: var(--cb-green-dark); color: #e9e3d0; font-size: 0.8rem; padding: 6px 0; }
+.utility-bar .container { display: flex; justify-content: space-between; }
+.utility-bar span + span { margin-left: 1.5rem; }
+.navbar-top {
+  background: var(--cb-green); background-image: none;
+  border-bottom: 4px solid var(--cb-gold); box-shadow: none;
+}
+.navbar-brand { font-size: 1.5rem; }
+.navbar-brand::before {
+  content: "\2605"; width: 40px; height: 40px; line-height: 40px; border-radius: 50%;
+  background: var(--cb-gold); color: var(--cb-green-dark);
+}
+.nav-link:hover { color: #f1dba5 !important; }
+.material-icons, .button-icon, .money-icon, .modal-icon, .arrow-back, .sign-in i, .card-icon { color: var(--cb-green); }
+.navbar-top .material-icons { color: #ffffff; }
+.card { border-radius: 4px; border: 1px solid var(--cb-line); border-top: 3px solid var(--cb-green); box-shadow: 0 1px 3px rgba(0,0,0,0.08) !important; }
+.table thead th { color: var(--cb-green); border-bottom: 2px solid var(--cb-gold); }
+.table tbody tr:hover { background: var(--cb-cream); }
+.btn, .btn-primary, .card-button, .btn-block, form button, .btn.btn-primary {
+  background: var(--cb-green) !important; border-radius: 2px; box-shadow: none; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+}
+.btn:hover, .card-button:hover, .btn-primary:hover, .btn:focus, .btn-primary:focus {
+  background-color: var(--cb-green-dark) !important;
+}
+.btn:active, .card-button:active, .btn-primary:active, .btn-secondary:active { background-color: var(--cb-gold) !important; border-color: var(--cb-gold) !important; }
+.btn-secondary, .btn.btn-secondary {
+  background-color: #ffffff !important; color: var(--cb-green) !important; border: 2px solid var(--cb-green) !important;
+}
+.custom-file-control, .form-control, .is-focused .custom-file-control, .is-focused .form-control,
+.custom-file-control:invalid, .form-control:invalid {
+  background-image: linear-gradient(0deg, var(--cb-gold) 2px, rgba(184,137,43,0) 0), linear-gradient(0deg, rgba(0,0,0,.26) 1px, transparent 0);
+}
+.form-control:focus { border-color: var(--cb-gold) !important; }
+.modal-content, .dropdown-menu { border-radius: 4px; }
+.snackbar-card { background-color: var(--cb-green-dark) !important; border-radius: 4px; }
+.alert-danger { border-radius: 4px; }
+.footer { background: var(--cb-green-dark); border-top: 4px solid var(--cb-gold); color: #e9e3d0; margin-top: 3rem; padding: 1.5rem 0; font-size: 0.85rem; }
+.footer a, .footer span { color: #e9e3d0; }
+.footer .footer-links span + span { margin-left: 1.5rem; }
