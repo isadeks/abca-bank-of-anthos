@@ -58,7 +58,7 @@ def create_app():
         """
         Service version endpoint
         """
-        return app.config["VERSION"], 200
+        return f"contacts {app.config['VERSION'] or 'unknown'}", 200
 
     @app.route("/ready", methods=["GET"])
     def ready():
