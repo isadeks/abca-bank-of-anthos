@@ -55,7 +55,7 @@ def create_app():
         """
         Service version endpoint
         """
-        return app.config['VERSION'], 200
+        return app.config['VERSION'], 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
     @app.route('/ready', methods=['GET'])
     def readiness():
@@ -242,7 +242,7 @@ def create_app():
     else:
         app.logger.info("🚫 Tracing disabled.")
 
-    app.config['VERSION'] = os.environ.get('VERSION')
+    app.config['VERSION'] = os.environ.get('VERSION') or 'unknown'
     app.config['EXPIRY_SECONDS'] = int(os.environ.get('TOKEN_EXPIRY_SECONDS'))
     app.config['PRIVATE_KEY'] = open(os.environ.get('PRIV_KEY_PATH'), 'r').read()
     app.config['PUBLIC_KEY'] = open(os.environ.get('PUB_KEY_PATH'), 'r').read()
