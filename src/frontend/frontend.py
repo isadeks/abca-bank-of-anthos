@@ -96,11 +96,19 @@ def create_app():
     @app.route("/")
     def root():
         """
-        Renders home page or login page, depending on authentication status.
+        Renders the public landing page, or the account home page for a
+        signed-in customer.
         """
         token = request.cookies.get(app.config['TOKEN_NAME'])
         if not verify_token(token):
-            return login_page()
+            return render_template('landing.html',
+                                   bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
+                                   cluster_name=cluster_name,
+                                   cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                                   platform=platform,
+                                   platform_display_name=platform_display_name,
+                                   pod_name=pod_name,
+                                   pod_zone=pod_zone)
         return home()
 
     @app.route("/home")

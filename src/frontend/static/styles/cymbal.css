@@ -579,3 +579,13 @@ h1, h2, h3, h4, .header-title, .card-header-title, .pop-up-label, .navbar-brand 
 .footer { background: var(--cb-green-dark); border-top: 4px solid var(--cb-gold); color: #e9e3d0; margin-top: 3rem; padding: 1.5rem 0; font-size: 0.85rem; }
 .footer a, .footer span { color: #e9e3d0; }
 .footer .footer-links span + span { margin-left: 1.5rem; }
+
+/* Public landing page */
+.landing-hero {
+  background: var(--cb-green);
+  color: #fff;
+}
+.landing-hero .header-title,
+.landing-hero .lead {
+  color: #fff;
+}
