@@ -201,7 +201,9 @@ public final class BalanceReaderController {
             boolean cacheHit = cache.asMap() != null
                 && cache.asMap().containsKey(accountId);
             tagSpan(cacheHit);
-            // Load from cache
+            // Always serve a fresh balance: the ledger poller can lag behind
+            // writes, so a just-made deposit could show an old balance.
+            cache.invalidate(accountId);
             Long balance = cache.get(accountId);
             return new ResponseEntity<Long>(balance, HttpStatus.OK);
         } catch (JWTVerificationException e) {
