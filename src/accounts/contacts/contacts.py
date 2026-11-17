@@ -58,7 +58,7 @@ def create_app():
         """
         Service version endpoint
         """
-        return app.config["VERSION"], 200
+        return app.config["VERSION"], 200, {"Content-Type": "text/plain; charset=utf-8"}
 
     @app.route("/ready", methods=["GET"])
     def ready():
@@ -225,7 +225,7 @@ def create_app():
         app.logger.info("🚫 Tracing disabled.")
 
     # setup global variables
-    app.config["VERSION"] = os.environ.get("VERSION")
+    app.config["VERSION"] = os.environ.get("VERSION", "unknown")
     app.config["LOCAL_ROUTING"] = os.environ.get("LOCAL_ROUTING_NUM")
     app.config["PUBLIC_KEY"] = open(os.environ.get("PUB_KEY_PATH"), "r").read()
 
