@@ -30,7 +30,7 @@ class TestSavingsTips(HandlerTestCase):
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
         self.assertIn('Savings tips', html)
-        self.assertEqual(html.count('<li>'), 6)
+        self.assertEqual(html.count('<li>'), 7)
         self.assertIn('<footer', html)
 
     def test_footer_link(self):

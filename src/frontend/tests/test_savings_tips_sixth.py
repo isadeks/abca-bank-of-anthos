@@ -34,7 +34,7 @@ class TestSavingsTipsSixth(HandlerTestCase):
         html = resp.get_data(as_text=True)
         ul = html[html.index('id="savings-tips-list"'):html.index('</ul>')]
         tips = re.findall(r'<li>(.*?)</li>', ul)
-        self.assertEqual(len(tips), 6)
+        self.assertEqual(len(tips), 7)
         self.assertEqual(
             tips[5],
             "Review your subscriptions every month and cancel the ones "
