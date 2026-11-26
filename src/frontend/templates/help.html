@@ -1,0 +1,32 @@
+<html lang="en">
+  <head>
+{% include 'shared/html_head.html' %}
+  </head>
+  <body>
+{% include 'shared/platform_banner.html' %}
+{% include 'shared/navigation.html' %}
+    <main class="container">
+      <div class="row header header-body">
+        <div class="col-md-12"><h2 class="header-title" id="help-title">Help</h2></div>
+      </div>
+      <div class="row">
+        <div class="col-lg-8 offset-lg-2" id="help-faq">
+          <section class="faq-entry" id="faq-deposit">
+            <h4>How do I make a deposit?</h4>
+            <p>Sign in, choose Deposit on the home page, pick an account, enter an amount and submit.</p>
+          </section>
+          <section class="faq-entry" id="faq-send-money">
+            <h4>How do I send money?</h4>
+            <p>Sign in, choose Send Payment on the home page, pick a contact or enter an account number, enter an amount and submit.</p>
+          </section>
+          <section class="faq-entry" id="faq-sign-out">
+            <h4>How do I sign out?</h4>
+            <p>Open your name in the top right corner of the page and choose Sign out.</p>
+          </section>
+        </div>
+      </div>
+    </main>
+{% include 'shared/footer.html' %}
+{% include 'shared/scripts.html' %}
+  </body>
+</html>
