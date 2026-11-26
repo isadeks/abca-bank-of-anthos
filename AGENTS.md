@@ -24,6 +24,7 @@ CI runs outside this repository; changing scripts here does not change it.
 - `abca-boa/ci`: the unit tests of every changed service, then its image build.
 - `abca-boa/tests`: a change to a service's source must add or change a test.
 - `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. Add new test files or new test cases instead of changing existing ones.
+  - Exception, to keep test files from multiplying: when a change adds or adjusts an item on a page that already has a unit test and a UI check (e.g. another savings tip), update those existing tests, with the matching maintainer approval, instead of adding a new test file per item. New test files are for new pages or new behaviour.
 - `abca-boa/integration`: integration tests run against the **real database images** (Postgres with the Bank of Anthos schema and demo data), in CI only:
   - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
