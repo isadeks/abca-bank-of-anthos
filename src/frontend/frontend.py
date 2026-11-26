@@ -627,6 +627,27 @@ def create_app():
                                pod_name=pod_name,
                                pod_zone=pod_zone)
 
+    def _info_page(template):
+        """Renders a public info page"""
+        return render_template(template,
+                               bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
+                               cluster_name=cluster_name,
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               platform=platform,
+                               platform_display_name=platform_display_name,
+                               pod_name=pod_name,
+                               pod_zone=pod_zone)
+
+    @app.route("/fees", methods=['GET'])
+    def fees_page():
+        """Renders the public fees page"""
+        return _info_page('fees.html')
+
+    @app.route("/hours", methods=['GET'])
+    def hours_page():
+        """Renders the public opening hours page"""
+        return _info_page('hours.html')
+
     @app.route("/signup", methods=['POST'])
     def signup():
         """
