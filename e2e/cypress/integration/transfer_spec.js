@@ -67,7 +67,7 @@ describe('Authenticated default user', function () {
     })
 
     it('sees transfer button', function () {
-        cy.get('#paymentSpan').contains('Send Payment')
+        cy.get('#paymentSpan').contains('Send money')
 
     })
 

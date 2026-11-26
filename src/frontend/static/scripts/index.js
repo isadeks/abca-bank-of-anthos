@@ -60,7 +60,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
     });
   });
 
-  // Handle new account option in Send Payment modal
+  // Handle new account option in Send money modal
   document.querySelector("#payment-accounts").addEventListener("change", function(e) {
     RefreshModals();
   });
