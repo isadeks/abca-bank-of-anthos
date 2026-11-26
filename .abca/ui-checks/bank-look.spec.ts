@@ -21,7 +21,7 @@ test('login and home pages show the community-bank header and footer', async ({ 
   await highlight(page, nav, 'header');
   await shot(page, 'Signed-in home page with the new header', { focus: nav });
   const footer = page.locator('footer.footer .footer-links');
-  await expect(footer).toContainText('Locations');
+  await expect(footer).toContainText('Branch locations');
   await highlight(page, footer, 'footer links');
   await shot(page, 'Bank-style footer', { focus: footer });
 });
