@@ -648,6 +648,11 @@ def create_app():
         """Renders the public opening hours page"""
         return _info_page('hours.html')
 
+    @app.route("/loan-calculator", methods=['GET'])
+    def loan_calculator_page():
+        """Renders the public loan calculator page"""
+        return _info_page('loan_calculator.html')
+
     @app.route("/signup", methods=['POST'])
     def signup():
         """
