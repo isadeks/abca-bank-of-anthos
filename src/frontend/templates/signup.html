@@ -190,7 +190,8 @@ limitations under the License.
                     <div class="row mb-5">
                       <div class="col-md-6">
                         <label class="text-uppercase text-muted secondary-text" for="social">SSN</label>
-                        <input type="text" class="form-control" id="ssn" name="ssn" value="111-22-3333" readonly>
+                        <input type="text" class="form-control" id="ssn" name="ssn" aria-describedby="ssn-help" value="111-22-3333" readonly>
+                        <small id="ssn-help" class="form-text text-muted">We only use your SSN to verify your identity.</small>
                         <div class="invalid-feedback">
                           Valid SSN is required.
                         </div>
