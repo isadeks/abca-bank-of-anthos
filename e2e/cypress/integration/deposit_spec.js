@@ -59,7 +59,7 @@ describe('Authenticated default user', function () {
     })
 
     it('sees deposit button', function () {
-        cy.get('#depositSpan').contains('Deposit Funds')
+        cy.get('#depositSpan').contains('Add money')
     })
 
     it('clicking deposit button makes modal visible', function () {
