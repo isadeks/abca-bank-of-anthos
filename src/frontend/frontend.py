@@ -17,7 +17,9 @@
 
 # Module imports
 import concurrent.futures
+import csv
 import datetime
+import io
 import json
 import logging
 import os
@@ -29,7 +31,7 @@ import requests
 from requests.exceptions import HTTPError, RequestException
 import jwt
 from flask import Flask, abort, jsonify, make_response, redirect, \
-    render_template, request, url_for
+    render_template, request, url_for, Response
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -116,6 +118,62 @@ def create_app():
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
         return _render_home(token, message=request.args.get('msg', None))
+
+    @app.route("/transactions.csv")
+    def transactions_csv():
+        """
+        Downloads the transactions shown on the home page as a CSV file
+        with the columns date, description and amount.
+        """
+        token = request.cookies.get(app.config['TOKEN_NAME'])
+        if not verify_token(token):
+            return redirect(url_for('login_page',
+                                    _external=True,
+                                    _scheme=app.config['SCHEME']))
+        token_data = decode_token(token)
+        account_id = token_data['acct']
+        hed = {'Authorization': 'Bearer ' + token}
+        history_call = ApiCall(
+            display_name=TRANSACTION_LIST_NAME,
+            api_request=ApiRequest(url=f'{app.config["HISTORY_URI"]}/{account_id}',
+                                   headers=hed,
+                                   timeout=app.config['BACKEND_TIMEOUT']),
+            logger=app.logger)
+        contacts_call = ApiCall(
+            display_name=CONTACTS_NAME,
+            api_request=ApiRequest(url=f'{app.config["CONTACTS_URI"]}/{token_data["user"]}',
+                                   headers=hed,
+                                   timeout=app.config['BACKEND_TIMEOUT']),
+            logger=app.logger)
+        history_resp = history_call.make_call()
+        if not history_resp:
+            return 'Could not load transactions', 502
+        history = history_resp.json()
+        contacts_resp = contacts_call.make_call()
+        contacts = contacts_resp.json() if contacts_resp else []
+        _populate_contact_labels(account_id, history, contacts)
+
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator='\r\n')
+        writer.writerow(['Date', 'Description', 'Amount'])
+        for trans in history:
+            credit = trans['toAccountNum'] == account_id
+            other = trans['fromAccountNum'] if credit else trans['toAccountNum']
+            description = trans.get('accountLabel') or other
+            amount = '{}{:.2f}'.format('' if credit else '-',
+                                       abs(Decimal(trans['amount']) / 100))
+            date = datetime.datetime.strptime(
+                trans['timestamp'], app.config['TIMESTAMP_FORMAT']).strftime('%Y-%m-%d')
+            writer.writerow([date, _csv_safe(description), amount])
+        return Response(out.getvalue(), mimetype='text/csv', headers={
+            'Content-Disposition': 'attachment; filename="transactions.csv"'})
+
+    def _csv_safe(value):
+        """Neutralise spreadsheet formulas in a text cell"""
+        value = str(value)
+        if value[:1] in ('=', '+', '-', '@', '\t', '\r'):
+            return "'" + value
+        return value
 
     def _render_home(token, message=None, is_error=False, status=200):
         """
