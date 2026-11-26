@@ -1,0 +1,47 @@
+<!--
+Copyright 2020 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html lang="en">
+  <head>
+{% include 'shared/html_head.html' %}
+  </head>
+  <body>
+{% include 'shared/platform_banner.html' %}
+{% include 'shared/navigation.html' %}
+    <main class="container">
+      <div class="row mt-5 mb-5">
+        <div class="col-lg-8 offset-lg-2">
+          <div class="card">
+            <div class="card-title header-body">
+              <h2 class="mb-4 header-title">Savings tips</h2>
+            </div>
+            <div class="card-body">
+              <ul id="savings-tips-list">
+                <li>Pay yourself first: move money to savings on payday.</li>
+                <li>Set a monthly budget and review it each week.</li>
+                <li>Build an emergency fund covering three months of expenses.</li>
+                <li>Cancel subscriptions you no longer use.</li>
+                <li>Wait 24 hours before any non-essential purchase.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+{% include 'shared/footer.html' %}
+{% include 'shared/scripts.html' %}
+  </body>
+</html>
