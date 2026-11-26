@@ -606,6 +606,20 @@ def create_app():
             app.logger.error('Error retrieving auth code: %s', str(err))
         return make_response(redirect(redirect_uri + '#error=server_error', 302))
 
+    @app.route("/help", methods=['GET'])
+    def help_page():
+        """
+        Renders the public Help page (no sign-in needed)
+        """
+        return render_template('help.html',
+                               bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
+                               cluster_name=cluster_name,
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               platform=platform,
+                               platform_display_name=platform_display_name,
+                               pod_name=pod_name,
+                               pod_zone=pod_zone)
+
     @app.route("/signup", methods=['GET'])
     def signup_page():
         """
