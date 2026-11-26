@@ -12,7 +12,7 @@ test('footer link opens the public savings tips page', async ({ page }) => {
   await link.click();
   await expect(page).toHaveURL(/\/savings-tips$/);
   const list = page.locator('#savings-tips-list');
-  await expect(list.locator('li')).toHaveCount(5);
-  await highlight(page, list, 'five tips');
+  await expect(list.locator('li')).toHaveCount(6);
+  await highlight(page, list, 'six tips');
   await shot(page, 'The Savings tips page without signing in', { focus: list });
 });
