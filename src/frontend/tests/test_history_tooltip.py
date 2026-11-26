@@ -19,5 +19,5 @@ class TestHistoryTooltip(unittest.TestCase):
             html = f.read()
         self.assertRegex(
             html,
-            r'<h4[^>]*title="Your most recent transactions"[^>]*>\s*'
+            r'<h4[^>]*title="Your last 10 transactions"[^>]*>\s*'
             r'Transaction History')
