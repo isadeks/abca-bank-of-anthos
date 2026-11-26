@@ -706,6 +706,11 @@ def create_app():
         """Renders the public opening hours page"""
         return _info_page('hours.html')
 
+    @app.route("/savings-tips", methods=['GET'])
+    def savings_tips_page():
+        """Renders the public savings tips page"""
+        return _info_page('savings_tips.html')
+
     @app.route("/loan-calculator", methods=['GET'])
     def loan_calculator_page():
         """Renders the public loan calculator page"""
