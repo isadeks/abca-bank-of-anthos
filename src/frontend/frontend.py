@@ -62,6 +62,52 @@ class TransactionError(UserWarning):
 
 # pylint: disable-msg=too-many-locals
 # pylint: disable-msg=too-many-branches
+def _valid_date(value):
+    """Returns value if it is a YYYY-MM-DD date, else an empty string."""
+    try:
+        datetime.datetime.strptime(value or '', '%Y-%m-%d')
+        return value
+    except ValueError:
+        return ''
+
+
+def filter_transactions(history, account_id, kind='all', query='',
+                        date_from='', date_to=''):
+    """
+    Filters a transaction list for display.
+
+    Params: kind - 'all', 'credit' (money in) or 'debit' (money out)
+            query - case-insensitive text matched against the other
+                    account number and the contact label
+            date_from, date_to - inclusive 'YYYY-MM-DD' bounds on the
+                    transaction date (blank or invalid = no bound)
+    """
+    if not history:
+        return history
+    query = (query or '').strip().lower()
+    date_from = _valid_date(date_from)
+    date_to = _valid_date(date_to)
+    result = []
+    for t in history:
+        is_credit = t.get('toAccountNum') == account_id
+        if kind == 'credit' and not is_credit:
+            continue
+        if kind == 'debit' and is_credit:
+            continue
+        day = str(t.get('timestamp') or '')[:10]
+        if date_from and day < date_from:
+            continue
+        if date_to and day > date_to:
+            continue
+        if query:
+            other = t.get('fromAccountNum') if is_credit else t.get('toAccountNum')
+            haystack = f"{other or ''} {t.get('accountLabel') or ''}".lower()
+            if query not in haystack:
+                continue
+        result.append(t)
+    return result
+
+
 def create_app():
     """Flask application factory to create instances
     of the Frontend Flask App
@@ -115,9 +161,15 @@ def create_app():
             return redirect(url_for('login_page',
                                     _external=True,
                                     _scheme=app.config['SCHEME']))
-        return _render_home(token, message=request.args.get('msg', None))
+        return _render_home(token, message=request.args.get('msg', None),
+                            filter_type=request.args.get('type', 'all'),
+                            filter_query=request.args.get('q', ''),
+                            filter_from=request.args.get('from', ''),
+                            filter_to=request.args.get('to', ''))
 
-    def _render_home(token, message=None, is_error=False, status=200):
+    def _render_home(token, message=None, is_error=False, status=200,
+                     filter_type='all', filter_query='',
+                     filter_from='', filter_to=''):
         """
         Renders the home page for a user with a valid token.
 
@@ -175,14 +227,28 @@ def create_app():
                                  api_response[TRANSACTION_LIST_NAME],
                                  api_response[CONTACTS_NAME])
 
+        if filter_type not in ('all', 'credit', 'debit'):
+            filter_type = 'all'
+        total_transactions = api_response[TRANSACTION_LIST_NAME]
+        filter_from = _valid_date(filter_from)
+        filter_to = _valid_date(filter_to)
+        history = filter_transactions(total_transactions, account_id,
+                                      filter_type, filter_query,
+                                      filter_from, filter_to)
+
         return render_template('index.html',
                                account_id=account_id,
+                               filter_type=filter_type,
+                               filter_query=filter_query,
+                               filter_from=filter_from,
+                               filter_to=filter_to,
+                               total_transactions=total_transactions,
                                balance=api_response[BALANCE_NAME],
                                bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
                                cluster_name=cluster_name,
                                contacts=api_response[CONTACTS_NAME],
                                cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
-                               history=api_response[TRANSACTION_LIST_NAME],
+                               history=history,
                                message=message,
                                message_is_error=is_error,
                                name=display_name,
