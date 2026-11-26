@@ -28,6 +28,7 @@ class TestBalanceTooltip(unittest.TestCase):
                             'templates', 'index.html')
         with open(path, encoding='utf-8') as f:
             html = f.read()
-        tag = re.search(r'<span[^>]*id="current-balance"[^>]*>', html)
+        tag = re.search(r'<span[^>]*id="balance-tooltip"[^>]*>\s*'
+                        r'<span[^>]*id="current-balance">', html)
         self.assertIsNotNone(tag)
         self.assertIn('title="Your current available balance"', tag.group(0))
