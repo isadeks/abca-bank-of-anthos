@@ -529,6 +529,15 @@ def create_app():
                                 _external=True,
                                 _scheme=app.config['SCHEME']))
 
+    @app.route("/fees", methods=['GET'])
+    def fees_page():
+        """Renders the static fees info page (no sign-in required)."""
+        return render_template('fees.html',
+                               bank_name=os.getenv('BANK_NAME', 'Larkspur Bank'),
+                               cymbal_logo=os.getenv('CYMBAL_LOGO', 'false'),
+                               platform=platform,
+                               platform_display_name=platform_display_name)
+
     @app.route("/consent", methods=['GET'])
     def consent_page():
         """Renders consent page.
