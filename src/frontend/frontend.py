@@ -719,6 +719,11 @@ def create_app():
         """Renders the public loan calculator page"""
         return _info_page('loan_calculator.html')
 
+    @app.route("/help", methods=['GET'])
+    def help_page():
+        """Renders the public help page"""
+        return _info_page('help.html')
+
     @app.route("/signup", methods=['POST'])
     def signup():
         """
