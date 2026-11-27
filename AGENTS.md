@@ -23,7 +23,7 @@ Bank of Anthos is a demo bank: 6 services, 2 Postgres databases and a load gener
 CI runs outside this repository; changing scripts here does not change it.
 - `abca-boa/ci`: the unit tests of every changed service, then its image build.
 - `abca-boa/tests`: a change to a service's source must add or change a test.
-- `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. For new pages or new behaviour, add new test files or new test cases instead of changing existing ones. When a change only adds or adjusts an item on a page that already has a unit test and a UI check (for example, adding a seventh savings tip updates `test_savings_tips.py` and the savings UI check), update those existing tests, with the matching approval, instead of adding a new test file per item.
+- `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. For new pages or new behaviour, add new test files or new test cases instead of changing existing ones. When a change only adds or adjusts an item on a page that already has a unit test and a UI check (for example another savings tip), update those existing tests, with the matching approval, instead of adding a new test file per item.
 - `abca-boa/integration`: integration tests run against the **real database images** (Postgres with the Bank of Anthos schema and demo data), in CI only:
   - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
