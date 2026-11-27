@@ -23,7 +23,7 @@ Bank of Anthos is a demo bank: 6 services, 2 Postgres databases and a load gener
 CI runs outside this repository; changing scripts here does not change it.
 - `abca-boa/ci`: the unit tests of every changed service, then its image build.
 - `abca-boa/tests`: a change to a service's source must add or change a test.
-- `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. Add new test files or new test cases instead of changing existing ones.
+- `abca-boa/test-integrity`: editing or deleting an existing test needs a maintainer's approval. For new pages or new behaviour, add new test files or new test cases instead of changing existing ones. When a change only adds or adjusts an item on a page that already has a unit test and a UI check (for example another savings tip), update those existing tests, with the matching approval, instead of adding a new test file per item.
 - `abca-boa/integration`: integration tests run against the **real database images** (Postgres with the Bank of Anthos schema and demo data), in CI only:
   - Python: `src/<service>/tests/integration/*.py`, reading `ACCOUNTS_DB_URI` (accounts-db). Import the service's modules as production does (`from db import ContactsDb`).
   - Java: test classes named `*IT.java` under `src/test/java`, using `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` (ledger-db). Unit runs skip `*IT`.
@@ -46,7 +46,7 @@ A change to tests or docs only gets no preview, and merging it leaves production
 
 ## UI checks (`.abca/ui-checks/*.spec.ts`)
 When you change what a user sees, add a Playwright check that shows the change working. CI runs it against your PR's preview, records a video and turns your steps into a captioned walk-through that reviewers watch on the PR and in Linear.
-- One file per change at the top level of `.abca/ui-checks/` (files in sub-folders don't run). Use `@playwright/test` and the CI helper `./ui-annotate` only.
+- One file per page or feature (not per item: if the page already has a UI check, extend it) at the top level of `.abca/ui-checks/` (files in sub-folders don't run). Use `@playwright/test` and the CI helper `./ui-annotate` only.
 - Environment: `PREVIEW_URL` (Playwright's `baseURL`, so `page.goto('/home')` works), `DEMO_USER` / `DEMO_PASSWORD` (the demo account the UI checks sign in as, currently `bob` / `bankofanthos`, which has demo transactions and contacts; use these variables, don't hard-code a user name. The end-to-end tests use `testuser` and run at the same time, so a UI check must not rely on `testuser`'s balance or history). If you need an empty account, sign up a new user through `/signup` with a unique name.
 - A good check: `await signIn(page)` → drive the UI to your change → 2–6 steps, each `await highlight(page, el, 'short label')` then `await shot(page, 'Caption a reviewer reads', { focus: el })` → **assert** the behaviour with `expect`. Captions describe what the user sees ("Spending by category on the home page"), not test internals.
 - Stable selectors: the templates' ids (`#current-balance`, `#transaction-table`, `#deposit-form`, `#payment-form`, …); add an `id` or `data-testid` to new elements you need to find.
