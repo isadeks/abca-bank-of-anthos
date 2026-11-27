@@ -52,7 +52,11 @@ limitations under the License.
       <div class="row col-lg-12 align-items-start top-row">
         <div class="col-md-8">
           <small class="text-uppercase text-muted secondary-text">Overview</small>
+          {% if first_name %}
+          <h2 class="header-title" id="home-greeting">Welcome back, {{ first_name }}</h2>
+          {% else %}
           <h2 class="header-title">Checking Account</h2>
+          {% endif %}
         </div>
 
         <div class="col-md-4 account-info text-right">

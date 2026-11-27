@@ -185,6 +185,8 @@ def create_app():
         """
         token_data = decode_token(token)
         display_name = token_data['name']
+        name_words = str(display_name or '').split()
+        first_name = name_words[0] if name_words else None
         username = token_data['user']
         account_id = token_data['acct']
 
@@ -244,6 +246,7 @@ def create_app():
                                message=message,
                                message_is_error=is_error,
                                name=display_name,
+                               first_name=first_name,
                                platform=platform,
                                platform_display_name=platform_display_name,
                                pod_name=pod_name,
