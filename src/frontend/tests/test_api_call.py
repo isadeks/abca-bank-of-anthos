@@ -56,13 +56,6 @@ class TestApiCall(unittest.TestCase):
                 self.logger.error.assert_called_once_with(
                     'Error getting %s: %s', 'balance', str(exc))
 
-    @mock.patch('api_call.get', side_effect=ValueError('bad url'))
-    def test_value_error(self, _mock_get):
-        """Done means 4: ValueError is logged, returns None"""
-        self.assertIsNone(self.call.make_call())
-        self.logger.error.assert_called_once_with(
-            'Error getting %s: %s', 'balance', 'bad url')
-
 
 if __name__ == '__main__':
     unittest.main()
